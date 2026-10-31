@@ -37,6 +37,17 @@
     <div class="panel">
       <h2>Start a new table</h2>
       <p>Create a room, then send the link to your friends (2&ndash;6 players).</p>
+      <div class="choice">
+        <label><input type="radio" name="mode" value="cash" checked> Cash game</label>
+        <label><input type="radio" name="mode" value="tournament"> Tournament</label>
+      </div>
+      <p class="hint" id="mode-hint">Play as long as you like. Out of chips? Rebuy.</p>
+      <label class="field" id="speed-field" hidden>Blinds go up
+        <select id="speed-select"><option value="normal">every 8 hands</option><option value="fast">every 4 hands (fast)</option></select>
+      </label>
+      <label class="field">League
+        <select id="league-select"><option value="">None</option></select>
+      </label>
       <button class="primary" id="create-btn" style="width:100%">Create Room</button>
     </div>
     <div class="panel">
@@ -46,7 +57,53 @@
         <button class="primary" id="join-btn">Join</button>
       </div>
     </div>
+    <div class="panel">
+      <h2>Leagues</h2>
+      <p>A league keeps a table of everyone's results across all your games together.</p>
+      <ul class="lobby-list" id="my-leagues"></ul>
+      <div class="row">
+        <input type="text" id="league-name-input" maxlength="30" placeholder="New league name">
+        <button class="primary" id="league-create-btn">Create</button>
+      </div>
+      <div class="row">
+        <input type="text" class="code" id="league-code-input" maxlength="6" placeholder="LEAGUE" autocomplete="off">
+        <button class="primary" id="league-join-btn">Join</button>
+      </div>
+    </div>
     <div class="error" id="home-error"></div>
+  </section>
+
+  <!-- A league's table -->
+  <section id="league-view" hidden>
+    <div class="panel" style="text-align:center">
+      <h2 id="league-title"></h2>
+      <p>League code</p>
+      <div class="room-code" id="league-code"></div>
+      <button class="secondary" id="league-share-btn">Share league link</button>
+      <p id="league-share-note" style="min-height:20px"></p>
+      <div id="league-member-actions">
+        <div class="row">
+          <button class="primary" id="league-tournament-btn">New tournament</button>
+          <button class="secondary" id="league-cash-btn">New cash game</button>
+        </div>
+      </div>
+      <button class="primary" id="league-join-here-btn" hidden style="width:100%">Join this league</button>
+      <div class="error" id="league-error"></div>
+    </div>
+    <div class="panel">
+      <h2>League table</h2>
+      <table class="score league">
+        <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Played</th><th>Wins</th><th>Avg</th><th>Hands won</th></tr></thead>
+        <tbody id="league-body"></tbody>
+      </table>
+      <p class="hint">Tournament points: everyone you finish above, plus 1. Winning a 6-player tournament
+        scores 6, last place scores 1. Avg = average finishing place. Hands won counts every league game.</p>
+    </div>
+    <div class="panel">
+      <h2>Recent tournaments</h2>
+      <ul class="lobby-list" id="league-recent"></ul>
+    </div>
+    <div class="footer"><button class="secondary" id="league-back-btn">Back</button></div>
   </section>
 
   <!-- Waiting for players -->
@@ -54,6 +111,7 @@
     <div class="panel" style="text-align:center">
       <p>Room code</p>
       <div class="room-code" id="lobby-code"></div>
+      <p id="lobby-mode"></p>
       <button class="primary" id="share-btn">Share invite link</button>
       <p id="share-note" style="min-height:20px"></p>
     </div>
@@ -69,25 +127,36 @@
   <!-- At the table -->
   <section id="game-view" hidden>
     <div class="room-bar">
-      <span>Room <b id="game-code"></b></span>
+      <span>Room <b id="game-code"></b> <small id="game-info"></small></span>
       <button class="secondary" id="game-share-btn">Invite</button>
     </div>
+    <div class="panel final" id="final-panel" hidden>
+      <h2 id="final-title"></h2>
+      <table class="score">
+        <thead><tr><th>Place</th><th>Player</th><th id="final-points-head">Points</th></tr></thead>
+        <tbody id="final-body"></tbody>
+      </table>
+      <button class="primary" id="again-btn" style="width:100%;margin-top:10px">Play again</button>
+      <p id="final-note"></p>
+    </div>
+
     <div class="table multi">
       <div class="seats" id="seats"></div>
       <div class="middle">
         <div class="pot">Pot: <b id="pot">0</b> <small id="street"></small></div>
+        <div class="blinds" id="blinds-info"></div>
         <div class="cards" id="board"></div>
       </div>
       <div class="seat me-box">
         <div class="cards" id="your-cards"></div>
         <div class="seat-info" id="me-info"></div>
-        <div class="equity-box"><span class="label">Win chance:</span><span class="equity" id="equity"></span></div>
+        <div class="equity-box" id="equity-box" hidden><span class="label">Win chance:</span><span class="equity" id="equity"></span></div>
       </div>
     </div>
 
     <div class="message" id="message"></div>
 
-    <div class="controls">
+    <div class="controls" id="controls">
       <button id="fold-btn">Fold</button>
       <button id="call-btn">Check</button>
       <button id="raise-btn">Raise</button>

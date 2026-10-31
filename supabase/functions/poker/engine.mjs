@@ -1,4 +1,4 @@
-// Multiplayer fixed-limit Texas Hold'em rules (2-6 players).
+// Multiplayer fixed-limit Texas Hold'em rules (2-6 players), cash games and tournaments.
 // Pure game logic: no networking or storage. The room object is plain JSON so it
 // can be saved to the database as-is. Used by the Edge Function and by the tests.
 import './poker.js';
@@ -12,18 +12,32 @@ export const CONFIG = {
   MAX_PLAYERS: 6,
   TURN_SECONDS: 45,       // after this anyone can ask the server to auto-check/fold
   NEXT_HAND_SECONDS: 4,   // pause after a hand before the next one can be dealt
+  // Tournament blind levels [small, big]; the level goes up every N hands.
+  BLIND_LEVELS: [[10, 20], [15, 30], [25, 50], [40, 80], [60, 120], [100, 200],
+                 [150, 300], [250, 500], [400, 800], [600, 1200], [1000, 2000]],
+  HANDS_PER_LEVEL: { normal: 8, fast: 4 },
 };
 const STREETS = ['Pre-flop', 'Flop', 'Turn', 'River'];
 
 export class GameError extends Error {}
 const fail = msg => { throw new GameError(msg); };
 
+export const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+
 // ---------- Room & players ----------
 
-export function newRoom(code, now) {
+// opts: { mode: 'cash' | 'tournament', speed: 'normal' | 'fast', league: { code, name } | null }
+export function newRoom(code, now, opts = {}) {
   return {
-    code, status: 'lobby', hostId: null, players: [], hand: null, handNo: 0,
+    code,
+    mode: opts.mode === 'tournament' ? 'tournament' : 'cash',
+    speed: opts.speed === 'fast' ? 'fast' : 'normal',
+    league: opts.league || null,
+    status: 'lobby',          // lobby -> playing (-> finished, tournaments only)
+    hostId: null, players: [], hand: null, handNo: 0,
     lastDealerId: null, lastDealerIdx: -1, log: [], createdAt: now,
+    tournament: null,
+    events: [],               // for the league table; taken out by the server before saving
   };
 }
 
@@ -34,33 +48,57 @@ function addLog(room, msg) {
 
 const player = (room, id) => room.players.find(p => p.id === id);
 const nameOf = (room, id) => (player(room, id) || {}).name || '?';
+const isTournament = room => room.mode === 'tournament';
 
-export function cleanName(name) {
-  name = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 16);
+export function cleanName(name, max = 16) {
+  name = String(name || '').replace(/\s+/g, ' ').trim().slice(0, max);
   if (!name) fail('Please enter a name.');
   return name;
 }
 
-export function addPlayer(room, { id, name, tokenHash }) {
+export function addPlayer(room, { id, name, tokenHash, profileId = null }) {
   const seated = room.players.filter(p => !p.leaving);
   if (seated.length >= CONFIG.MAX_PLAYERS) fail('This table is full (6 players).');
   name = cleanName(name);
   let unique = name, n = 2;
   while (room.players.some(p => p.name.toLowerCase() === unique.toLowerCase())) unique = `${name} ${n++}`;
+  // Joining a tournament that's under way: watch now, play in the next one.
+  const watching = isTournament(room) && room.status === 'playing';
   room.players.push({
-    id, name: unique, tokenHash, chips: CONFIG.START_CHIPS, leaving: false,
-    stats: { played: 0, won: 0, tied: 0, lost: 0 },
+    id, name: unique, tokenHash, profileId, chips: watching ? 0 : CONFIG.START_CHIPS,
+    leaving: false, watching, stats: { played: 0, won: 0, tied: 0, lost: 0 },
   });
   if (!room.hostId) room.hostId = id;
-  addLog(room, `${unique} joined the table.`);
+  addLog(room, watching ? `${unique} joined and will play in the next tournament.` : `${unique} joined the table.`);
   return player(room, id);
+}
+
+// ---------- Blinds ----------
+
+// Blinds for the next hand dealt.
+function currentBlinds(room) {
+  if (!isTournament(room) || !room.tournament) return { sb: CONFIG.SMALL_BLIND, bb: CONFIG.BIG_BLIND, level: 1 };
+  const per = CONFIG.HANDS_PER_LEVEL[room.speed];
+  const idx = Math.min(Math.floor(room.tournament.hands / per), CONFIG.BLIND_LEVELS.length - 1);
+  const [sb, bb] = CONFIG.BLIND_LEVELS[idx];
+  return { sb, bb, level: idx + 1 };
+}
+
+// What to show players: the blinds now (or for the next hand), and how many more hands
+// will be dealt at this level before they go up (not counting a hand in progress).
+function blindsInfo(room) {
+  const h = room.hand;
+  const t = room.tournament;
+  const info = h && !h.over ? { sb: h.sb, bb: h.bb, level: t ? t.level : 1 } : currentBlinds(room);
+  if (!isTournament(room) || !t || info.level >= CONFIG.BLIND_LEVELS.length) return { ...info, handsLeft: null };
+  return { ...info, handsLeft: info.level * CONFIG.HANDS_PER_LEVEL[room.speed] - t.hands };
 }
 
 // ---------- Hand helpers ----------
 
 const handActive = room => room.hand && !room.hand.over;
 const maxBet = h => Math.max(0, ...h.ids.map(id => h.bets[id]));
-const betSize = h => (h.street < 2 ? CONFIG.BIG_BLIND : CONFIG.BIG_BLIND * 2);
+const betSize = h => (h.street < 2 ? h.bb : h.bb * 2);
 const notFolded = h => h.ids.filter(id => !h.folded[id]);
 const canAct = (room, h, id) => !h.folded[id] && player(room, id).chips > 0;
 
@@ -142,20 +180,31 @@ export function startHand(room, rand, now) {
   const sbId = headsUp ? dealerId : order[0];
   const bbId = headsUp ? order[0] : order[1];
 
+  const blinds = currentBlinds(room);
+  if (room.tournament) {
+    const before = room.tournament.level || 1;
+    room.tournament.hands++;
+    room.tournament.level = blinds.level;
+    if (blinds.level > before) addLog(room, `Blinds go up to ${blinds.sb}/${blinds.bb}.`);
+  }
+
   room.handNo++;
   const h = room.hand = {
-    no: room.handNo, ids, dealerId, sbId, bbId,
+    no: room.handNo, ids, dealerId, sbId, bbId, sb: blinds.sb, bb: blinds.bb,
     deck: P.shuffle(P.newDeck(), rand), hole: {}, board: [],
-    bets: {}, contrib: {}, folded: {}, acted: {},
-    raises: 1, street: 0, toAct: null, turnStart: now, over: false, equityOpponents: ids.length - 1,
+    bets: {}, contrib: {}, folded: {}, acted: {}, startChips: {},
+    raises: 1, street: 0, toAct: null, turnStart: now, over: false,
   };
-  for (const id of ids) { h.bets[id] = 0; h.contrib[id] = 0; h.folded[id] = false; h.acted[id] = false; h.hole[id] = []; }
+  for (const id of ids) {
+    h.bets[id] = 0; h.contrib[id] = 0; h.folded[id] = false; h.acted[id] = false; h.hole[id] = [];
+    h.startChips[id] = player(room, id).chips;
+  }
   for (let r = 0; r < 2; r++) for (const id of order) h.hole[id].push(h.deck.pop());
   room.lastResult = null;
 
   addLog(room, `Hand #${h.no}. ${nameOf(room, dealerId)} has the dealer button.`);
-  const sb = commit(room, h, sbId, CONFIG.SMALL_BLIND);
-  const bb = commit(room, h, bbId, CONFIG.BIG_BLIND);
+  const sb = commit(room, h, sbId, h.sb);
+  const bb = commit(room, h, bbId, h.bb);
   addLog(room, `${nameOf(room, sbId)} posts small blind ${sb}, ${nameOf(room, bbId)} posts big blind ${bb}.`);
 
   const first = nextActor(room, h, bbId);
@@ -244,7 +293,7 @@ export function timeout(room, now) {
 }
 
 export function nextHand(room, rand, now) {
-  if (room.status !== 'playing') fail('The game has not started yet.');
+  if (room.status !== 'playing') return false;
   if (handActive(room)) return false;
   const ended = room.lastResult ? room.lastResult.endedAt : 0;
   if (now - ended < CONFIG.NEXT_HAND_SECONDS * 1000) return false;
@@ -252,10 +301,32 @@ export function nextHand(room, rand, now) {
   return startHand(room, rand, now) || JSON.stringify(room) !== before; // false = nothing changed
 }
 
+// Start the game (cash) or a tournament. For tournaments the host can also use this to play again.
 export function startGame(room, id, rand, now) {
   if (room.hostId !== id) fail('Only the host can start the game.');
   if (room.status === 'playing') fail('The game has already started.');
-  if (room.players.filter(p => p.chips > 0).length < 2) fail('You need at least 2 players to start.');
+  if (isTournament(room)) {
+    room.players = room.players.filter(p => !p.leaving);
+    if (room.players.length < 2) fail('You need at least 2 players to start.');
+    const prevNo = room.tournament ? room.tournament.no : 0;
+    room.tournament = {
+      no: prevNo + 1, startedAt: now, hands: 0, level: 1, finishedAt: null,
+      entrants: room.players.map(p => p.id), places: {}, standings: null,
+      names: Object.fromEntries(room.players.map(p => [p.id, p.name])),
+      profiles: Object.fromEntries(room.players.map(p => [p.id, p.profileId])),
+    };
+    for (const p of room.players) {
+      p.chips = CONFIG.START_CHIPS;
+      p.watching = false;
+      p.stats = { played: 0, won: 0, tied: 0, lost: 0 };
+    }
+    room.hand = null;
+    room.lastResult = null;
+    addLog(room, `Tournament #${room.tournament.no} starts with ${room.players.length} players. ` +
+      `Blinds go up every ${CONFIG.HANDS_PER_LEVEL[room.speed]} hands. Last one standing wins!`);
+  } else if (room.players.filter(p => p.chips > 0).length < 2) {
+    fail('You need at least 2 players to start.');
+  }
   room.status = 'playing';
   startHand(room, rand, now);
 }
@@ -263,6 +334,7 @@ export function startGame(room, id, rand, now) {
 export function rebuy(room, id) {
   const p = player(room, id);
   if (!p) fail('You are not at this table.');
+  if (isTournament(room)) fail('There are no rebuys in a tournament.');
   if (p.chips > 0) fail('You can only rebuy when you are out of chips.');
   if (handActive(room) && room.hand.ids.includes(id) && !room.hand.folded[id]) fail('Wait until this hand is over.');
   p.chips = CONFIG.START_CHIPS;
@@ -277,23 +349,63 @@ export function leave(room, id, now) {
   const h = room.hand;
   if (handActive(room) && h.ids.includes(id) && !h.folded[id]) {
     p.leaving = true;
-    if (h.toAct === id) {
-      h.folded[id] = true;
-      afterAction(room, id, now);
-    } else {
-      h.folded[id] = true;
-      if (notFolded(h).length === 1) settle(room, now, true);
-      else if (nextActor(room, h, h.toAct) === null && !needsToAct(room, h, h.toAct)) endStreet(room, now);
-    }
+    h.folded[id] = true;
+    if (h.toAct === id) afterAction(room, id, now);
+    else if (notFolded(h).length === 1) settle(room, now, true);
+    else if (nextActor(room, h, h.toAct) === null && !needsToAct(room, h, h.toAct)) endStreet(room, now);
   } else if (handActive(room) && h.ids.includes(id)) {
     p.leaving = true; // folded already; remove after the hand
+    if (tournamentAlive(room, id)) { p.chips = 0; bust(room, [id]); finishIfDone(room, now); }
   } else {
+    if (tournamentAlive(room, id)) { p.chips = 0; bust(room, [id]); }
     room.players = room.players.filter(x => x.id !== id);
+    finishIfDone(room, now);
   }
   if (room.hostId === id) {
     const nextHost = room.players.find(x => !x.leaving);
     room.hostId = nextHost ? nextHost.id : null;
   }
+}
+
+// ---------- Tournaments ----------
+
+const tournamentRunning = room => isTournament(room) && room.status === 'playing' && room.tournament;
+const tournamentAlive = (room, id) =>
+  tournamentRunning(room) && room.tournament.entrants.includes(id) && !room.tournament.places[id];
+
+// Knock players out. Several out in the same hand: the one who started the hand with fewer chips finishes lower.
+function bust(room, ids, startChips = {}) {
+  const t = room.tournament;
+  let alive = t.entrants.filter(id => !t.places[id]).length;
+  const sorted = ids.slice().sort((a, b) => (startChips[a] || 0) - (startChips[b] || 0));
+  for (const id of sorted) {
+    t.places[id] = alive--;
+    addLog(room, `${t.names[id]} is out in ${ordinal(t.places[id])} place.`);
+  }
+}
+
+function finishIfDone(room, now) {
+  if (!tournamentRunning(room)) return;
+  const t = room.tournament;
+  const remaining = t.entrants.filter(id => !t.places[id]);
+  if (remaining.length > 1) return;
+  if (remaining.length === 1) t.places[remaining[0]] = 1;
+  const n = t.entrants.length;
+  t.finishedAt = now;
+  t.standings = t.entrants
+    .map(id => ({ id, name: t.names[id], profileId: t.profiles[id], place: t.places[id], points: n - t.places[id] + 1 }))
+    .sort((a, b) => a.place - b.place);
+  room.status = 'finished';
+  if (room.hand && !room.hand.over) { room.hand.over = true; room.hand.toAct = null; }
+  const winner = t.standings[0];
+  addLog(room, `🏆 ${winner.name} wins tournament #${t.no}!`);
+  room.events.push({
+    type: 'tournament',
+    key: `${room.code}:${t.no}:${t.startedAt}`,
+    date: now,
+    players: n,
+    standings: t.standings.map(({ name, profileId, place, points }) => ({ name, profileId, place, points })),
+  });
 }
 
 // ---------- Showdown & payouts ----------
@@ -359,6 +471,7 @@ function settle(room, now, byFold) {
   }
 
   const results = {};
+  const leagueHand = [];
   for (const id of h.ids) {
     const p = player(room, id);
     p.chips += winnings[id];
@@ -367,25 +480,45 @@ function settle(room, now, byFold) {
     const result = wonPot[id] ? 'won' : splitPot[id] ? 'tied' : 'lost';
     p.stats[result]++;
     results[id] = { result, net: winnings[id] - h.contrib[id] };
+    if (p.profileId) leagueHand.push({ profileId: p.profileId, name: p.name, result });
   }
   h.over = true;
   h.toAct = null;
   room.lastResult = { handNo: h.no, byFold, shown, results, endedAt: now };
+  if (leagueHand.length) room.events.push({ type: 'hand', players: leagueHand });
+
+  if (tournamentRunning(room)) {
+    // Out of chips, or left during the hand: knocked out.
+    const out = h.ids.filter(id => tournamentAlive(room, id) && (player(room, id).chips === 0 || player(room, id).leaving));
+    for (const id of out) player(room, id).chips = 0;
+    if (out.length) bust(room, out, h.startChips);
+    finishIfDone(room, now);
+  }
 }
 
 // ---------- What each player is allowed to see ----------
 
 export function publicView(room, now) {
   const h = room.hand;
+  const t = room.tournament;
   return {
     code: room.code,
+    mode: room.mode,
+    speed: room.speed,
+    league: room.league,
     status: room.status,
     hostId: room.hostId,
     waiting: !!room.waiting,
     config: CONFIG,
     serverNow: now,
+    blinds: blindsInfo(room),
+    tournament: t ? {
+      no: t.no, entrants: t.entrants.length, places: t.places, standings: t.standings,
+      finishedAt: t.finishedAt, handsPerLevel: CONFIG.HANDS_PER_LEVEL[room.speed],
+    } : null,
     players: room.players.map(p => ({
-      id: p.id, name: p.name, chips: p.chips, leaving: p.leaving, stats: p.stats,
+      id: p.id, name: p.name, chips: p.chips, leaving: p.leaving, watching: !!p.watching, stats: p.stats,
+      place: t && t.places[p.id] && room.status !== 'lobby' ? t.places[p.id] : null,
       inHand: !!(h && h.ids.includes(p.id)),
       folded: !!(h && h.folded[p.id]),
       bet: h && !h.over ? h.bets[p.id] || 0 : 0,

@@ -69,9 +69,16 @@ phone sees the same table. If a phone did this, its owner could peek at everyone
 6. [x] Navigation between "vs Computer" and "With Friends", offline caching, README.
 7. [x] End-to-end browser test with several simulated players; deploy to GitHub Pages.
 
+## Added later: tournaments and leagues
+- [x] Room type: cash game or tournament (no rebuys, rising blinds every 8 or 4 hands, knock-outs get a
+  finishing place, last one standing wins, host can play again).
+- [x] Leagues: private groups with a 6-letter code and a league table (tournament points = players
+  beaten + 1, wins, average finish, hands won). Each device gets a random private profile so results
+  follow you between tables without accounts. Stored in a `leagues` table with no public access.
+
 ## Later ideas (not in this version)
 - No-limit betting with a bet slider.
-- Accounts so stats follow you across devices.
+- Accounts so stats and league results follow you across devices (today: one profile per device).
 - Chat / emoji reactions.
 - Clean up of old rooms with a scheduled job (currently: rooms idle for 2 days are deleted
   whenever a new room is created).

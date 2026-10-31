@@ -12,6 +12,31 @@ const test = async (name, fn) => {
   catch (e) { console.log('FAIL', name); console.log(e); process.exitCode = 1; }
 };
 
+// In-memory stand-in for the database (rooms + leagues), with version checks like the real one.
+function makeStore() {
+  const rooms = new Map(), leagues = new Map();
+  const table = (map, key) => ({
+    async load(code) { const r = map.get(code); return r && { version: r.version, [key]: structuredClone(r.data) }; },
+    async save(code, expected, data) {
+      if (store.failNextSave) { store.failNextSave = false; const r = map.get(code); if (r) r.version++; return false; }
+      const r = map.get(code);
+      if (expected === 0) { if (r) return false; map.set(code, { version: 1, data: structuredClone(data) }); return true; }
+      if (!r || r.version !== expected) return false;
+      map.set(code, { version: expected + 1, data: structuredClone(data) });
+      return true;
+    },
+  });
+  const r = table(rooms, 'room'), l = table(leagues, 'league');
+  const store = { load: r.load, save: r.save, loadLeague: l.load, saveLeague: l.save, rooms, leagues, failNextSave: false };
+  return store;
+}
+
+function makeTournament(n, speed = 'fast') {
+  const room = E.newRoom('TOUR', 0, { mode: 'tournament', speed });
+  for (let i = 0; i < n; i++) E.addPlayer(room, { id: 'p' + i, name: 'P' + i, tokenHash: 'h' + i, profileId: 'profile' + i });
+  return room;
+}
+
 function makeRoom(stacks) {
   const room = E.newRoom('TEST', 0);
   stacks.forEach((chips, i) => {
@@ -197,19 +222,7 @@ await test('fuzz: thousands of random hands keep chips conserved and turns valid
 });
 
 await test('api: create, join, start, play, and racing saves', async () => {
-  const db = new Map();
-  let failNextSave = false;
-  const store = {
-    async load(code) { const r = db.get(code); return r && { version: r.version, room: structuredClone(r.room) }; },
-    async save(code, expected, room) {
-      if (failNextSave) { failNextSave = false; const r = db.get(code); r.version++; return false; }
-      const r = db.get(code);
-      if (expected === 0) { if (r) return false; db.set(code, { version: 1, room: structuredClone(room) }); return true; }
-      if (!r || r.version !== expected) return false;
-      db.set(code, { version: expected + 1, room: structuredClone(room) });
-      return true;
-    },
-  };
+  const store = makeStore();
   const a = await handle({ action: 'create', name: 'Alice' }, store, 0);
   assert.match(a.code, /^[A-Z]{4}$/);
   const b = await handle({ action: 'join', code: a.code.toLowerCase(), name: 'alice' }, store, 0);
@@ -223,7 +236,7 @@ await test('api: create, join, start, play, and racing saves', async () => {
   assert.ok(!JSON.stringify(s.state).includes('"hole"'));
   assert.ok(!JSON.stringify(s.state).includes('deck'));
   const tokens = { [a.playerId]: a.token, [b.playerId]: b.token };
-  failNextSave = true; // simulate another player's save sneaking in
+  store.failNextSave = true; // simulate another player's save sneaking in
   for (let i = 0; i < 40 && !s.state.hand.over; i++) {
     s = await handle({ action: 'act', code: a.code, token: tokens[s.state.hand.toAct], move: 'call' }, store, 1);
   }
@@ -233,6 +246,132 @@ await test('api: create, join, start, play, and racing saves', async () => {
   assert.equal(chips, 2000);
   const again = await handle({ action: 'join', code: a.code, token: a.token }, store, 2);
   assert.equal(again.playerId, a.playerId); // rejoin with saved token
+});
+
+await test('tournament: blinds go up every 4 hands on fast', () => {
+  const room = makeTournament(3);
+  E.startGame(room, 'p0', Math.random, 0);
+  assert.equal(room.hand.bb, 20);
+  let now = 0;
+  for (let k = 0; k < 4; k++) {
+    playOut(room, () => 'fold', now);
+    now += 10000;
+    E.nextHand(room, Math.random, now);
+  }
+  assert.equal(room.hand.bb, 30); // 5th hand: level 2
+  assert.ok(room.log.some(l => l.includes('Blinds go up to 15/30')));
+  assert.throws(() => E.rebuy(room, 'p0'), /no rebuys/);
+});
+
+await test('tournament: random tournaments always end with one winner and correct places', () => {
+  let totalHands = 0;
+  for (let game = 0; game < 120; game++) {
+    const n = 2 + (game % 5);
+    const room = makeTournament(n, game % 2 ? 'fast' : 'normal');
+    E.startGame(room, 'p0', Math.random, 0);
+    let now = 0, guard = 0;
+    while (room.status === 'playing') {
+      assert.ok(guard++ < 5000, 'tournament never ended');
+      if (room.hand && !room.hand.over) {
+        const r = Math.random();
+        E.act(room, room.hand.toAct, r < 0.1 ? 'fold' : r < 0.6 ? 'raise' : 'call', now);
+        if (room.status === 'playing') assert.equal(total(room), n * 1000, 'chips not conserved');
+      } else {
+        now += 10000;
+        assert.ok(E.nextHand(room, Math.random, now), 'next hand did not start');
+        totalHands++;
+      }
+    }
+    const t = room.tournament;
+    assert.equal(room.status, 'finished');
+    assert.deepEqual(Object.values(t.places).sort((a, b) => a - b), Array.from({ length: n }, (_, i) => i + 1));
+    assert.equal(t.standings[0].place, 1);
+    assert.equal(room.players.find(p => p.id === t.standings[0].id).chips, n * 1000); // winner has every chip
+    assert.equal(t.standings.reduce((s, x) => s + x.points, 0), n * (n + 1) / 2);
+    assert.equal(room.events.filter(e => e.type === 'tournament').length, 1);
+    assert.equal(E.nextHand(room, Math.random, now + 99999), false); // no more hands
+  }
+  console.log(`      (120 tournaments, ${totalHands} hands)`);
+});
+
+await test('tournament: leaving knocks you out; late joiners watch until the next one; play again', () => {
+  const room = makeTournament(4);
+  E.startGame(room, 'p0', Math.random, 0);
+  playOut(room, () => 'fold', 1);           // hand over
+  E.leave(room, 'p3', 2);                   // leaves between hands
+  assert.equal(room.tournament.places.p3, 4);
+  E.addPlayer(room, { id: 'p9', name: 'Late', tokenHash: 'h9' });
+  const late = room.players.find(p => p.id === 'p9');
+  assert.ok(late.watching && late.chips === 0);
+  E.nextHand(room, Math.random, 20000);
+  assert.ok(!room.hand.ids.includes('p9'));
+  E.leave(room, 'p1', 20001);               // leaves during a hand
+  E.leave(room, 'p2', 20002);
+  assert.equal(room.status, 'finished');
+  assert.equal(room.tournament.standings[0].id, 'p0');
+  assert.throws(() => E.startGame(room, 'p9', Math.random, 30000), /Only the host/);
+  E.startGame(room, 'p0', Math.random, 30000); // play again
+  assert.equal(room.tournament.no, 2);
+  assert.equal(room.tournament.entrants.length, 2); // p0 and the late joiner
+  assert.ok(room.hand.ids.includes('p9'));
+});
+
+await test('league: tournament results and hands go into the league table', async () => {
+  const store = makeStore();
+  const prof = i => ({ id: 'deviceprofile' + i, secret: 'secret-secret-secret-' + i });
+  const lg = await handle({ action: 'league_create', leagueName: 'Friday Night', name: 'Alice', profile: prof(1) }, store, 0);
+  assert.match(lg.league.code, /^[A-Z]{6}$/);
+  const code = lg.league.code;
+  await assert.rejects(handle({ action: 'league_join', code, name: 'Imposter', profile: { id: prof(1).id, secret: 'wrong-wrong-wrong-wrong' } }, store, 0), /verify/);
+
+  const a = await handle({ action: 'create', name: 'Alice', profile: prof(1), mode: 'tournament', speed: 'fast', league: code }, store, 0);
+  assert.equal(a.state.league.name, 'Friday Night');
+  const b = await handle({ action: 'join', code: a.code, name: 'Bob', profile: prof(2) }, store, 0);
+  const c = await handle({ action: 'join', code: a.code, name: 'Cara', profile: prof(3) }, store, 0);
+  let view = await handle({ action: 'league_view', code, profile: prof(2) }, store, 0);
+  assert.equal(view.league.members.length, 3);   // joining the table joined the league
+  assert.ok(view.league.isMember);
+
+  const tokens = { [a.playerId]: a.token, [b.playerId]: b.token, [c.playerId]: c.token };
+  let s = await handle({ action: 'start', code: a.code, token: a.token }, store, 0);
+  let now = 0;
+  for (let i = 0; i < 4000 && s.state.status === 'playing'; i++) {
+    if (s.state.hand && !s.state.hand.over) {
+      s = await handle({ action: 'act', code: a.code, token: tokens[s.state.hand.toAct], move: Math.random() < 0.6 ? 'raise' : 'call' }, store, now);
+    } else {
+      now += 10000;
+      s = await handle({ action: 'next', code: a.code, token: a.token }, store, now);
+    }
+  }
+  assert.equal(s.state.status, 'finished');
+  const standings = s.state.tournament.standings;
+  view = await handle({ action: 'league_view', code }, store, now);
+  const top = view.league.members[0];
+  assert.equal(top.name, standings[0].name);
+  assert.equal(top.points, 3);
+  assert.equal(top.wins, 1);
+  assert.equal(view.league.members.reduce((t, m) => t + m.points, 0), 6);
+  assert.equal(view.league.members.reduce((t, m) => t + m.tournaments, 0), 3);
+  assert.ok(view.league.members.every(m => m.hands > 0));
+  assert.equal(view.league.recent.length, 1);
+  assert.ok(!JSON.stringify(view).includes('profileHash'));
+  assert.ok(!JSON.stringify(view).includes('secret'));
+
+  // Play again: a second tournament adds to the table
+  s = await handle({ action: 'start', code: a.code, token: a.token }, store, now + 1);
+  assert.equal(s.state.status, 'playing');
+  assert.equal(s.state.tournament.no, 2);
+});
+
+await test('cash is the default mode, and rooms saved by the previous version still load', async () => {
+  const store = makeStore();
+  const a = await handle({ action: 'create', name: 'Alice' }, store, 0);
+  assert.equal(a.state.mode, 'cash');
+  const room = store.rooms.get(a.code).data;
+  delete room.mode; delete room.events; delete room.tournament; // like a room saved by the old version
+  await handle({ action: 'join', code: a.code, name: 'Bob' }, store, 0);
+  const s = await handle({ action: 'start', code: a.code, token: a.token }, store, 0);
+  assert.equal(s.state.hand.no, 1);
 });
 
 console.log(`\n${passed} tests passed${process.exitCode ? ', some FAILED' : ''}`);

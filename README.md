@@ -22,11 +22,30 @@ After it's installed, it opens full-screen like a normal app and works offline.
    They can also type the 4-letter room code.
 3. When everyone's in (2–6 players), the host taps **Start Game**. Hands then follow on automatically.
 
-- Each player starts with 1000 chips. If you run out, tap **Rebuy**.
+When creating a room, pick:
+
+- **Cash game**: play as long as you like. Everyone starts with 1000 chips, and if you run out, tap **Rebuy**.
+- **Tournament**: everyone starts with 1000 chips and there are no rebuys. Blinds go up every 8 hands
+  (or every 4 on "fast"): 10/20, 15/30, 25/50, 40/80 and so on. When you run out you're knocked out and
+  get a finishing place. **The last player with chips wins.** People who join mid-tournament watch and
+  play in the next one. The host can tap **Play again** for another round.
 - If someone takes longer than 45 seconds on their turn, they're automatically checked or folded.
 - Close the app and come back later: you'll go straight back to your seat.
 - The **Table scores** panel shows everyone's hands played, hands won and win %. The stats bar at the top counts
   your own friends games on this device, separately from your games against the computer.
+
+### Leagues
+
+A league is a private group with its own **league table** covering all your games together.
+
+- Create one under **Leagues** on the With Friends page, then share the league link (or 6-letter code).
+- Tap **New tournament** or **New cash game** from the league page, or pick the league when creating a room.
+  Anyone who joins a league table joins the league.
+- **Tournament points** = number of players you finish above + 1. Winning a 6-player tournament scores 6
+  and last place scores 1. The table is sorted by points, then wins. It also shows tournaments played,
+  wins, average finishing place, and hands won across all league games (cash games included).
+- Your phone remembers you with a private ID; there's no sign-up. A different phone or browser counts as a
+  different player.
 
 ## How to play (vs Computer)
 
@@ -51,6 +70,7 @@ The server shuffles and deals, so nobody can see anyone else's cards. It runs on
   split pots, timeouts) and `api.mjs` handles requests. It uses the same `poker.js` as the browser (symlinked).
 - `supabase/migrations/`: the database. `rooms` holds what every player may see and is pushed live to phones.
   `room_secrets` holds the deck, hole cards and player tokens, and only the server function can read it.
+  `leagues` holds league tables and member profile hashes, and also has no public access.
 - `config.js`: the project URL and publishable key. These are safe to be public.
 - `docs/MULTIPLAYER_PLAN.md`: the design.
 
@@ -58,8 +78,8 @@ To redeploy the server after changing it: `supabase functions deploy poker --no-
 
 ## Tests
 
-- `node tests/engine.test.mjs`: game rules, side pots, and thousands of random hands.
-- `NODE_PATH=$(npm root -g) node tests/friends.e2e.mjs`: three players in three browsers (needs Playwright).
+- `node tests/engine.test.mjs`: game rules, side pots, tournaments, leagues, and thousands of random hands.
+- `NODE_PATH=$(npm root -g) node tests/friends.e2e.mjs`: several players in separate browsers, including a league tournament (needs Playwright).
 
 ## Files
 

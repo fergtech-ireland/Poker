@@ -5,6 +5,8 @@
   const SESSION_KEY = 'holdem-friends-session';
   const NAME_KEY = 'holdem-name';
   const STATS_KEY = 'holdem-friends-stats';
+  const PROFILE_KEY = 'holdem-profile';
+  const LEAGUES_KEY = 'holdem-leagues';
 
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -14,6 +16,20 @@
   const store = (k, v) => localStorage.setItem(k, JSON.stringify(v));
   let session = load(SESSION_KEY, null); // { code, token, playerId, counted: [handNo...] }
   let stats = load(STATS_KEY, { wins: 0, losses: 0, ties: 0 });
+  let myLeagues = load(LEAGUES_KEY, []); // [{ code, name }]
+
+  // This device's player profile: lets league tables recognise you across games (no sign-up needed).
+  function randomString(chars, length) {
+    const a = new Uint32Array(length);
+    crypto.getRandomValues(a);
+    return Array.from(a, n => chars[n % chars.length]).join('');
+  }
+  let profile = load(PROFILE_KEY, null);
+  if (!profile || !profile.id || !profile.secret) {
+    profile = { id: randomString('abcdefghijklmnopqrstuvwxyz0123456789', 20), secret: randomString('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 40) };
+    store(PROFILE_KEY, profile);
+  }
+  const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
 
   function renderStats() {
     const played = stats.wins + stats.losses + stats.ties;
@@ -27,8 +43,10 @@
   // ---------- Server calls ----------
   async function api(action, extra = {}) {
     const body = { action, ...extra };
-    if (session && !body.code) body.code = session.code;
-    if (session && !body.token && action !== 'create') body.token = session.token;
+    const leagueAction = action.startsWith('league_');
+    if (session && !leagueAction && !body.code) body.code = session.code;
+    if (session && !leagueAction && !body.token && action !== 'create') body.token = session.token;
+    if (action === 'create' || action === 'join' || leagueAction) body.profile = profile;
     const res = await fetch(FN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: CFG.key },
@@ -49,7 +67,7 @@
   const serverNow = () => Date.now() + clockOffset;
 
   function apply(res) {
-    if (!res || !res.state) return;
+    if (!res || !res.state || !session || res.state.code !== session.code) return; // left, or a reply for an old table
     if (res.state.serverNow < lastServerNow) return; // an older response arrived late
     lastServerNow = res.state.serverNow;
     clockOffset = res.state.serverNow - Date.now();
@@ -157,7 +175,8 @@
   }
 
   function show(view) {
-    for (const v of ['home-view', 'lobby-view', 'game-view']) $(v).hidden = v !== view;
+    for (const v of ['home-view', 'league-view', 'lobby-view', 'game-view']) $(v).hidden = v !== view;
+    if (view === 'home-view') renderHome();
     $('loading').hidden = true;
   }
 
@@ -178,7 +197,10 @@
     if (state.status === 'lobby') return renderLobby();
     show('game-view');
     $('game-code').textContent = state.code;
+    $('game-info').textContent = modeText();
     const h = state.hand;
+    const tourney = state.mode === 'tournament';
+    const finished = state.status === 'finished';
     const result = state.lastResult;
     const showdown = result && h && h.over && result.handNo === h.no ? result : null;
 
@@ -194,7 +216,9 @@
       } else if (p.inHand && !p.folded && h && !h.over) {
         cards = cardHTML(null, true) + cardHTML(null, true);
       }
-      if (p.leaving) status = 'Left';
+      if (p.place) status = `Out: ${ordinal(p.place)}`;
+      else if (p.watching) status = 'Watching';
+      else if (p.leaving) status = 'Left';
       else if (p.folded && h && !h.over) status = 'Folded';
       else if (!p.inHand && h && !h.over) status = p.chips > 0 ? 'Next hand' : 'Out of chips';
       else if (p.inHand && p.chips === 0 && h && !h.over && !p.folded) status = 'All in';
@@ -203,7 +227,7 @@
         const net = showdown.results[p.id].net;
         status += ` <span class="${net > 0 ? 'win' : 'loss'}">${net > 0 ? '+' : ''}${net}</span>`;
       }
-      const out = p.leaving || (h && !h.over && (!p.inHand || p.folded));
+      const out = p.leaving || (p.place && p.place > 1) || p.watching || (h && !h.over && (!p.inHand || p.folded));
       return `<div class="seat-box${turn ? ' turn' : ''}${out ? ' out' : ''}">
         <div class="name">${esc(p.name)}${tags}</div>
         <div>${p.chips} chips${p.bet ? ` <span class="bet">bet ${p.bet}</span>` : ''}</div>
@@ -219,12 +243,17 @@
     $('board').innerHTML = boardHTML;
     $('pot').textContent = h ? h.pot : 0;
     $('street').textContent = h && !h.over ? h.streetName : '';
+    const b = state.blinds;
+    $('blinds-info').textContent = tourney && !finished
+      ? `Blinds ${b.sb}/${b.bb} · level ${b.level}` + (b.handsLeft === null ? '' : b.handsLeft > 0 ? ` · up in ${b.handsLeft} hand${b.handsLeft === 1 ? '' : 's'}` : ' · going up next hand')
+      : `Blinds ${b.sb}/${b.bb}`;
 
     // Me
     const mine = playerById(me.id);
     const inHand = h && mine.inHand;
     $('your-cards').innerHTML = inHand && me.hole.length ? me.hole.map(c => cardHTML(c)).join('') : '';
     let info = `${esc(mine.name)} (you): <b>${mine.chips}</b> chips`;
+    if (mine.place && !finished) info += ` <span class="loss">Out: ${ordinal(mine.place)} place</span>`;
     if (h && h.dealerId === me.id) info += '<span class="tag">D</span>';
     if (h && !h.over && h.sbId === me.id) info += '<span class="tag">SB</span>';
     if (h && !h.over && h.bbId === me.id) info += '<span class="tag">BB</span>';
@@ -244,16 +273,21 @@
     $('raise-btn').disabled = !opt || !opt.canRaise;
     $('call-btn').textContent = opt && opt.toCall > 0 ? `Call ${opt.callAmount}` : 'Check';
     $('raise-btn').textContent = opt ? `${opt.isBet ? 'Bet' : 'Raise to'} ${opt.raiseTo}` : 'Raise';
-    const canRebuy = mine.chips === 0 && !(h && !h.over && mine.inHand && !mine.folded);
+    const canRebuy = !tourney && mine.chips === 0 && !(h && !h.over && mine.inHand && !mine.folded);
     $('rebuy-btn').hidden = !canRebuy;
     for (const id of ['fold-btn', 'call-btn', 'raise-btn']) $(id).hidden = canRebuy;
+    $('controls').hidden = finished || (tourney && (mine.place || mine.watching));
+    renderFinal(finished);
 
     // Message
     if (Date.now() >= errorUntil) {
       let msg = '';
-      if (opt) msg = 'Your turn.';
+      if (finished) msg = '';
+      else if (opt) msg = 'Your turn.';
+      else if (tourney && mine.watching) msg = "You'll play in the next tournament. Enjoy the show!";
+      else if (tourney && mine.place && (!h || h.over)) msg = `You finished ${ordinal(mine.place)}. Stay and watch, or leave the table.`;
       else if (h && !h.over) msg = `Waiting for ${(playerById(h.toAct) || {}).name || '...'}…`;
-      else if (state.players.filter(p => p.chips > 0 && !p.leaving).length < 2) msg = canRebuy ? 'You are out of chips. Rebuy to keep playing.' : 'Waiting for more players with chips…';
+      else if (!tourney && state.players.filter(p => p.chips > 0 && !p.leaving).length < 2) msg = canRebuy ? 'You are out of chips. Rebuy to keep playing.' : 'Waiting for more players with chips…';
       else if (h && h.over) msg = summary(showdown) + ' Next hand starting…';
       $('message').textContent = msg;
     }
@@ -267,6 +301,35 @@
       .map(p => `<tr class="${p.id === me.id ? 'me' : ''}"><td>${esc(p.name)}</td><td>${p.chips}</td><td>${p.stats.played}</td><td>${p.stats.won}</td><td>${pct(p.stats)}</td></tr>`)
       .join('');
     renderTimer();
+  }
+
+  function modeText() {
+    if (!state) return '';
+    const parts = [state.mode === 'tournament'
+      ? `Tournament${state.tournament ? ' #' + state.tournament.no : ''} · blinds up every ${state.config.HANDS_PER_LEVEL[state.speed]} hands`
+      : 'Cash game'];
+    if (state.league) parts.push(`League: ${state.league.name}`);
+    return parts.join(' · ');
+  }
+
+  // Final standings when a tournament ends.
+  function renderFinal(finished) {
+    $('final-panel').hidden = !finished;
+    if (!finished) return;
+    const t = state.tournament;
+    const winner = t.standings[0];
+    $('final-title').textContent = winner.id === me.id ? '🏆 You won the tournament!' : `🏆 ${winner.name} wins the tournament!`;
+    $('final-points-head').hidden = !state.league;
+    $('final-body').innerHTML = t.standings.map(s =>
+      `<tr class="${s.id === me.id ? 'me' : ''}"><td>${ordinal(s.place)}</td><td>${esc(s.name)}</td>` +
+      (state.league ? `<td>+${s.points}</td>` : '') + '</tr>').join('');
+    const host = state.hostId === me.id;
+    $('again-btn').hidden = !host;
+    $('again-btn').disabled = state.players.filter(p => !p.leaving).length < 2;
+    $('final-note').textContent = host
+      ? (state.players.length < 2 ? 'Waiting for someone to play against…' : 'Start another tournament with everyone at the table.')
+      : `Waiting for ${(playerById(state.hostId) || {}).name || 'the host'} to start another tournament…`;
+    if (state.league) $('final-note').textContent += ` Points have been added to the ${state.league.name} league table.`;
   }
 
   function summary(r) {
@@ -290,7 +353,7 @@
   function updateEquity(playing) {
     const h = state.hand;
     if (!playing || !me.hole.length) {
-      if (!h || equity.hand !== h.no) { equity = { key: '', list: [], hand: h && h.no }; $('equity').innerHTML = ''; }
+      if (!h || equity.hand !== h.no) { equity = { key: '', list: [], hand: h && h.no }; $('equity').innerHTML = ''; $('equity-box').hidden = true; }
       return;
     }
     const key = `${h.no}:${h.board.length}`;
@@ -313,11 +376,13 @@
     $('equity').innerHTML = equity.list.map((e, i) =>
       `<span${i === equity.list.length - 1 ? ' class="now"' : ''}>${i ? '→ ' : ''}${e.street} <b>${e.pct}%</b></span>`
     ).join(' ') + (equity.list.length ? ` <small>(vs ${equity.list[equity.list.length - 1].opponents})</small>` : '');
+    $('equity-box').hidden = !equity.list.length;
   }
 
   function renderLobby() {
     show('lobby-view');
     $('lobby-code').textContent = state.code;
+    $('lobby-mode').textContent = modeText();
     $('lobby-count').textContent = state.players.length;
     $('lobby-list').innerHTML = state.players.map(p =>
       `<li>${esc(p.name)}${p.id === state.hostId ? ' (host)' : ''}${p.id === me.id ? ' (you)' : ''}</li>`).join('');
@@ -373,7 +438,10 @@
   $('create-btn').onclick = () => {
     const name = nameValue(); if (!name) return;
     leaveOld();
-    busy($('create-btn'), async () => startSession(await api('create', { name })));
+    const mode = document.querySelector('input[name=mode]:checked').value;
+    busy($('create-btn'), async () => startSession(await api('create', {
+      name, mode, speed: $('speed-select').value, league: $('league-select').value || undefined,
+    })));
   };
   $('join-btn').onclick = () => {
     const name = nameValue(); if (!name) return;
@@ -384,6 +452,14 @@
   };
   $('code-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('join-btn').click(); });
   $('start-btn').onclick = () => send('start');
+  $('again-btn').onclick = () => send('start');
+  for (const r of document.querySelectorAll('input[name=mode]')) r.onchange = () => {
+    const t = document.querySelector('input[name=mode]:checked').value === 'tournament';
+    $('speed-field').hidden = !t;
+    $('mode-hint').textContent = t
+      ? 'Everyone starts with 1000 chips, no rebuys, blinds keep rising. Last one standing wins.'
+      : 'Play as long as you like. Out of chips? Rebuy.';
+  };
   // Lock the buttons as soon as a move is tapped, so a double-tap can't send it twice.
   let acting = false;
   async function move(m) {
@@ -398,7 +474,9 @@
   $('rebuy-btn').onclick = () => send('rebuy');
 
   async function leave() {
-    if (!confirm('Leave this table? Your chips at this table will be lost.')) return;
+    const playingTourney = state && state.mode === 'tournament' && state.status === 'playing' &&
+      me && !(playerById(me.id) || {}).place && !(playerById(me.id) || {}).watching;
+    if (!confirm(playingTourney ? 'Leave the tournament? You will be knocked out.' : 'Leave this table? Your chips at this table will be lost.')) return;
     try { await api('leave'); } catch (e) { /* leave anyway */ }
     endSession('');
   }
@@ -421,13 +499,106 @@
   $('share-btn').onclick = share;
   $('game-share-btn').onclick = share;
 
+  // ---------- Leagues ----------
+  let league = null; // league currently shown
+
+  function rememberLeague(l) {
+    myLeagues = myLeagues.filter(x => x.code !== l.code);
+    myLeagues.unshift({ code: l.code, name: l.name });
+    store(LEAGUES_KEY, myLeagues);
+  }
+
+  function renderHome() {
+    $('my-leagues').innerHTML = myLeagues.length
+      ? myLeagues.map(l => `<li class="league-item" data-code="${l.code}"><span>${esc(l.name)}</span><a>View table ›</a></li>`).join('')
+      : '<li>No leagues yet.</li>';
+    for (const li of document.querySelectorAll('#my-leagues .league-item')) li.onclick = () => openLeague(li.dataset.code);
+    const chosen = $('league-select').value;
+    $('league-select').innerHTML = '<option value="">None</option>' +
+      myLeagues.map(l => `<option value="${l.code}">${esc(l.name)}</option>`).join('');
+    if (myLeagues.some(l => l.code === chosen)) $('league-select').value = chosen;
+  }
+
+  async function openLeague(code) {
+    try {
+      const res = await api('league_view', { code });
+      showLeague(res.league);
+    } catch (e) {
+      show('home-view');
+      $('home-error').textContent = e.message;
+      if (/not found/.test(e.message)) { myLeagues = myLeagues.filter(l => l.code !== code); store(LEAGUES_KEY, myLeagues); renderHome(); }
+    }
+  }
+
+  function showLeague(l) {
+    league = l;
+    if (l.isMember) rememberLeague(l);
+    show('league-view');
+    history.replaceState(null, '', `?league=${l.code}`);
+    $('league-title').textContent = l.name;
+    $('league-code').textContent = l.code;
+    $('league-error').textContent = '';
+    $('league-member-actions').hidden = !l.isMember;
+    $('league-join-here-btn').hidden = l.isMember;
+    $('league-body').innerHTML = l.members.length ? l.members.map((m, i) =>
+      `<tr class="${m.you ? 'me' : ''}"><td>${i + 1}</td><td>${esc(m.name)}</td><td><b>${m.points}</b></td><td>${m.tournaments}</td>` +
+      `<td>${m.wins}</td><td>${m.avgFinish === null ? '-' : m.avgFinish}</td>` +
+      `<td>${m.hands ? `${m.handsWon}/${m.hands} (${Math.round(m.winPct)}%)` : '-'}</td></tr>`).join('')
+      : '<tr><td colspan="7">No games yet.</td></tr>';
+    $('league-recent').innerHTML = l.recent.length ? l.recent.map(t =>
+      `<li>${new Date(t.date).toLocaleDateString()}: ${t.standings.slice(0, 3).map(s => `${ordinal(s.place)} ${esc(s.name)}`).join(', ')}` +
+      `${t.players > 3 ? ` (+${t.players - 3} more)` : ''}</li>`).join('') : '<li>No tournaments yet.</li>';
+  }
+
+  async function leagueGame(mode) {
+    const name = $('name-input').value.trim() || localStorage.getItem(NAME_KEY);
+    if (!name) { show('home-view'); $('home-error').textContent = 'Please enter your name first.'; $('name-input').focus(); return; }
+    leaveOld();
+    try { startSession(await api('create', { name, mode, speed: 'normal', league: league.code })); }
+    catch (e) { $('league-error').textContent = e.message; }
+  }
+  $('league-tournament-btn').onclick = () => leagueGame('tournament');
+  $('league-cash-btn').onclick = () => leagueGame('cash');
+  $('league-back-btn').onclick = () => { history.replaceState(null, '', location.pathname); show('home-view'); };
+  $('league-join-here-btn').onclick = async () => {
+    const name = $('name-input').value.trim() || localStorage.getItem(NAME_KEY) || prompt('Your name for the league table:');
+    if (!name) return;
+    localStorage.setItem(NAME_KEY, name);
+    $('name-input').value = name;
+    try { showLeague((await api('league_join', { code: league.code, name })).league); }
+    catch (e) { $('league-error').textContent = e.message; }
+  };
+  $('league-create-btn').onclick = () => {
+    const name = nameValue(); if (!name) return;
+    const leagueName = $('league-name-input').value.trim();
+    if (!leagueName) { $('home-error').textContent = 'Give your league a name.'; $('league-name-input').focus(); return; }
+    busy($('league-create-btn'), async () => { showLeague((await api('league_create', { leagueName, name })).league); $('league-name-input').value = ''; });
+  };
+  $('league-join-btn').onclick = () => {
+    const name = nameValue(); if (!name) return;
+    const code = $('league-code-input').value.trim().toUpperCase();
+    if (code.length !== 6) { $('home-error').textContent = 'League codes are 6 letters.'; return; }
+    busy($('league-join-btn'), async () => { showLeague((await api('league_join', { code, name })).league); $('league-code-input').value = ''; });
+  };
+  $('league-share-btn').onclick = async () => {
+    const link = `${location.origin}${location.pathname}?league=${league.code}`;
+    try {
+      if (navigator.share) { await navigator.share({ title: league.name, text: `Join our poker league "${league.name}"! Code ${league.code}`, url: link }); return; }
+      await navigator.clipboard.writeText(link);
+      $('league-share-note').textContent = 'Link copied!';
+    } catch (e) {
+      if (!e || e.name !== 'AbortError') $('league-share-note').textContent = link;
+    }
+  };
+
   // ---------- Start up ----------
   renderStats();
   $('name-input').value = localStorage.getItem(NAME_KEY) || '';
   const roomParam = (new URLSearchParams(location.search).get('room') || '').toUpperCase().replace(/[^A-Z]/g, '');
+  const leagueParam = (new URLSearchParams(location.search).get('league') || '').toUpperCase().replace(/[^A-Z]/g, '');
 
   (async function init() {
-    if (session && (!roomParam || roomParam === session.code)) {
+    if (session && !leagueParam && (!roomParam || roomParam === session.code)) {
       // Coming back to a table we're already at.
       try {
         const res = await api('state');
@@ -441,6 +612,7 @@
         if (!/not found|not at this table/i.test(e.message)) $('home-error').textContent = e.message;
       }
     }
+    if (leagueParam) return openLeague(leagueParam);
     show('home-view');
     if (roomParam) {
       $('code-input').value = roomParam;

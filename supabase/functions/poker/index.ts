@@ -1,5 +1,7 @@
 // Edge Function "poker": the referee for friends' games.
-// POST { action, code?, token?, name?, move? } -> { ok, state, me, ... } or { error }
+// POST { action, code?, token?, name?, move?, profile?, ... } -> { ok, ... } or { error }
+// Room actions: create, join, state, start, act, next, timeout, rebuy, leave.
+// League actions: league_create, league_join, league_view.
 // Players authenticate with the random token they got when joining (verify_jwt is off).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { handle } from './api.mjs';
@@ -19,6 +21,16 @@ const store = {
     const { data, error } = await db.rpc('save_room', {
       p_code: code, p_expected: expected, p_state: view, p_secret: room,
     });
+    if (error) throw error;
+    return data === true;
+  },
+  async loadLeague(code: string) {
+    const { data, error } = await db.from('leagues').select('version, data').eq('code', code).maybeSingle();
+    if (error) throw error;
+    return data ? { version: data.version, league: data.data } : null;
+  },
+  async saveLeague(code: string, expected: number, league: unknown) {
+    const { data, error } = await db.rpc('save_league', { p_code: code, p_expected: expected, p_data: league });
     if (error) throw error;
     return data === true;
   },

@@ -84,7 +84,20 @@ input.code { text-transform: uppercase; letter-spacing: 4px; text-align: center;
 .score th, .score td { padding: 5px 4px; text-align: right; border-bottom: 1px solid #383838; }
 .score th:first-child, .score td:first-child { text-align: left; }
 .score tr.me td { color: #ffd700; }
+.score.league th:nth-child(2), .score.league td:nth-child(2) { text-align: left; }
+.final { margin-bottom: 12px; }
 #rebuy-btn { background: #5cb85c; color: #fff; }
+.choice { display: flex; gap: 8px; margin: 8px 0; }
+.choice label { flex: 1; background: #1f1f1f; border-radius: 6px; padding: 10px; text-align: center; cursor: pointer; }
+.choice label:has(input:checked) { background: #0b6623; }
+.choice input { margin-right: 6px; }
+.field { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; color: #ccc; }
+select { font-size: 15px; padding: 8px; border-radius: 6px; background: #1b1b1b; color: #fff; border: 1px solid #555; }
+.hint { color: #999 !important; font-size: 13px; }
+.blinds { color: #cfe; font-size: 13px; margin-bottom: 8px; }
+.final { border: 2px solid #ffd700; }
+.lobby-list li a { color: #ffd700; }
+.lobby-list li.league-item { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
 
 /* Phones */
 @media (max-width: 520px) {
