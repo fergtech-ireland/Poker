@@ -2,10 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Texas Hold'em</title>
+  <meta name="theme-color" content="#1b1b1b">
+  <meta name="description" content="Simple heads-up Texas Hold'em against the computer, with win/loss stats.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Hold'em">
   <style>
-    body { font-family: Arial, sans-serif; background: #1b1b1b; color: #eee; margin: 0; padding: 16px; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { background: #1b1b1b; }
+    body { font-family: Arial, sans-serif; color: #eee; margin: 0;
+           padding: max(16px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+                    max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+           touch-action: manipulation; -webkit-user-select: none; user-select: none; }
     .wrap { max-width: 760px; margin: 0 auto; }
     h1 { text-align: center; margin: 0 0 12px; font-size: 26px; }
     .stats { display: flex; justify-content: space-around; background: #2c2c2c; border-radius: 8px; padding: 10px; margin-bottom: 12px; text-align: center; }
@@ -37,6 +51,24 @@
     .log ul { list-style: none; padding: 0; margin: 0; }
     .log li { padding: 2px 0; border-bottom: 1px solid #383838; }
     .footer { text-align: center; margin-top: 10px; }
+
+    /* Phones */
+    @media (max-width: 520px) {
+      h1 { font-size: 22px; margin-bottom: 8px; }
+      .stats { padding: 8px 4px; }
+      .stats div span { font-size: 18px; }
+      .stats small { font-size: 11px; }
+      .table { border-radius: 40px; border-width: 6px; padding: 14px 8px; }
+      .cards { gap: 5px; min-height: 68px; }
+      .card { width: 46px; height: 66px; font-size: 18px; }
+      .middle { margin: 12px 0; }
+      .seat-info { font-size: 14px; }
+      .bet, .hand-name { display: inline-block; margin-left: 6px; }
+      .message { font-size: 15px; margin: 10px 0; }
+      .controls { gap: 8px; flex-wrap: nowrap; }
+      .controls button { flex: 1; padding: 14px 4px; font-size: 16px; }
+      .log { max-height: 140px; font-size: 13px; }
+    }
   </style>
 </head>
 <body>
@@ -90,5 +122,11 @@
 
 <script src="poker.js"></script>
 <script src="game.js"></script>
+<script>
+  // Offline/install support (only works when served over http/https, not file://)
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+</script>
 </body>
 </html>

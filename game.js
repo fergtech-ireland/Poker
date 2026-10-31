@@ -133,7 +133,7 @@
       g.raises++;
       g.acted = [false, false];
       g.acted[p] = true;
-      log(`${who} ${wasBet ? 'bet' : 'raise'}${s} to ${g.bets[p]}.`);
+      log(`${who} ${wasBet ? 'bet' : 'raise'}${s} ${wasBet ? '' : 'to '}${g.bets[p]}.`);
     }
 
     if (roundComplete()) nextStreet();
@@ -264,6 +264,7 @@
 
     const yourTurn = !g.handOver && g.toAct === YOU;
     const opt = options(YOU);
+    for (const id of ['fold-btn', 'call-btn', 'raise-btn']) $(id).hidden = g.handOver;
     $('fold-btn').disabled = !yourTurn || opt.toCall === 0;
     $('call-btn').disabled = !yourTurn;
     $('raise-btn').disabled = !yourTurn || !opt.canRaise;
