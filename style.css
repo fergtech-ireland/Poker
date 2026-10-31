@@ -41,6 +41,14 @@ button:disabled { opacity: .4; cursor: default; }
 .equity span { opacity: .7; white-space: nowrap; }
 .equity span.now { opacity: 1; color: #ffd700; font-size: 16px; }
 
+/* FergTech release line at the foot of every screen */
+.colophon { margin-top: 22px; padding: 18px 10px 8px; text-align: center; border-top: 1px solid #333; color: #888; font-size: 11px; line-height: 1.6; }
+.colophon .fx { font-weight: 800; font-size: 11px; letter-spacing: .2em; color: #ddd; margin-bottom: 4px; }
+.colophon .fx i { font-style: normal; color: #ffd700; }
+.colophon .fx sup { font-size: 8px; letter-spacing: 0; }
+.colophon p { margin: 0; }
+.colophon .build { opacity: .8; }
+
 /* Page switcher */
 .nav { display: flex; gap: 6px; margin-bottom: 12px; background: #2c2c2c; border-radius: 8px; padding: 4px; }
 .nav a { flex: 1; text-align: center; padding: 9px 4px; border-radius: 6px; color: #bbb; text-decoration: none; font-weight: bold; }

@@ -76,13 +76,28 @@ The server shuffles and deals, so nobody can see anyone else's cards. It runs on
 
 To redeploy the server after changing it: `supabase functions deploy poker --no-verify-jwt`.
 
+## Version, copyright and trademark
+
+Every screen ends with the FergTech footer, the same release line as other FergTech apps:
+
+> FERGTECH™
+> Texas Hold'em v0.5.0 · © 2026 FergTech · Built by FergTech
+> build abc1234, built 2026-10-31
+> FergTech™ is a trademark of FergTech.
+
+- The version lives in `version.js`. The deploy workflow stamps in the build commit and date.
+- To release: bump the version in `version.js`, add an entry to `CHANGELOG.md`, and bump `CACHE` in `sw.js`.
+
 ## Tests
 
+- `node tests/release.test.mjs`: the version/copyright line and the deploy stamping.
 - `node tests/engine.test.mjs`: game rules, side pots, tournaments, leagues, and thousands of random hands.
 - `NODE_PATH=$(npm root -g) node tests/friends.e2e.mjs`: several players in separate browsers, including a league tournament (needs Playwright).
 
 ## Files
 
+- `version.js`: version number and the FergTech copyright/trademark footer
+- `CHANGELOG.md`: what changed in each version
 - `poker.js`: deck, hand evaluator and equity estimate
 - `index.html`, `game.js`: the vs-computer game
 - `friends.html`, `friends.js`: play with friends
@@ -92,3 +107,7 @@ To redeploy the server after changing it: `supabase functions deploy poker --no-
 - `.github/workflows/pages.yml`: publishes the game to GitHub Pages on every push
 
 When you change any game file, bump `CACHE` in `sw.js` (e.g. `holdem-v2`) so installed copies pick up the update.
+
+---
+
+© 2026 FergTech. FergTech™ is a trademark of FergTech.
