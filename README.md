@@ -4,7 +4,7 @@ A simple Texas Hold'em game. Play heads-up against the computer, or at a table w
 
 ## Play it
 
-**https://fergtech-ireland.github.io/Poker/**
+**https://poker.fergtech.ie** (until the domain is live: https://fergtech-ireland.github.io/Poker/)
 
 You can also open `index.html` directly in any browser.
 
@@ -75,6 +75,15 @@ The server shuffles and deals, so nobody can see anyone else's cards. It runs on
 - `docs/MULTIPLAYER_PLAN.md`: the design.
 
 To redeploy the server after changing it: `supabase functions deploy poker --no-verify-jwt`.
+
+## Android / Google Play
+
+The Play app is a Trusted Web Activity: a small Android app that opens https://poker.fergtech.ie full-screen.
+- `android/twa-manifest.json`: the app's settings (package `ie.fergtech.holdem`)
+- `.github/workflows/android.yml`: builds the signed app bundle (Actions → Build Android app)
+- `.well-known/assetlinks.json`: proves the site and app belong together (filled in after the first build)
+- `store/`: Play Store icon, feature graphic and screenshots (`tools/store-assets.mjs` regenerates them)
+- `docs/ANDROID_RELEASE.md`: the release checklist; `docs/PLAY_STORE_LISTING.md`: step-by-step and listing text
 
 ## Version, copyright and trademark
 

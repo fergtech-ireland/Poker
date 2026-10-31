@@ -38,16 +38,18 @@ Friends.
 
 ## 3. Android app (TWA)
 
-- [ ] 🤖 Store-ready icons (including an Android "maskable" icon) and manifest details
-- [ ] 🤖 `twa-manifest.json` (Bubblewrap config): package `ie.fergtech.holdem`, name, colours
-- [ ] 🤖 GitHub Actions workflow that builds the signed Android App Bundle (.aab)
-- [ ] 🙋 **Website address for the app.** Android has to verify the site with a file at the domain root
-      (`/.well-known/assetlinks.json`). `fergtech-ireland.github.io/Poker` is a subfolder, so choose one:
-      - (a) a custom domain such as `poker.fergtech.ie` (recommended, looks professional), or
-      - (b) a repo named `fergtech-ireland.github.io` to host that one file (Claude can set it up).
-- [ ] 🙋 Create the upload signing key (Claude can generate it; you keep the file and passwords safe) and
-      add it as GitHub secrets
-- [ ] 🤖 Publish `assetlinks.json` with the key fingerprints once known
+Step-by-step instructions for every 🙋 item below are in **[PLAY_STORE_LISTING.md](PLAY_STORE_LISTING.md)**.
+
+- [x] ✅ Store-ready icons (including an Android "maskable" icon) and manifest details
+- [x] ✅ `android/twa-manifest.json` (Bubblewrap config): package `ie.fergtech.holdem`, name, colours
+- [x] ✅ GitHub Actions workflow `Build Android app` that builds the signed App Bundle (.aab).
+      Untested until the domain and signing secrets exist; the first run may need a small fix.
+- [x] ✅ Website address chosen: **poker.fergtech.ie**. Site files (`CNAME`, `.well-known/`) and the
+      server's allowed origins are ready.
+- [ ] 🙋 DNS: CNAME `poker` → `fergtech-ireland.github.io`, then GitHub → Settings → Pages → Custom domain
+      `poker.fergtech.ie` → Enforce HTTPS
+- [ ] 🙋 Create the upload signing key and add the 3 GitHub secrets
+- [ ] 🤖 Run the build, then publish `assetlinks.json` with the key fingerprints
 
 ## 4. Google Play Console
 
@@ -55,13 +57,14 @@ Friends.
       **12 testers for 14 days** before going public. **Organisation** accounts skip that but need a
       D-U-N-S number for FergTech.
 - [ ] 🙋 Create the app, upload the .aab, turn on Play App Signing
-- [ ] 🤖 Store listing text (short and full description) for you to paste
-- [ ] 🤖 Screenshots (phone) and feature graphic (1024×500)
-- [ ] 🙋 Content rating questionnaire: answer **yes to simulated gambling**; no real money
-- [ ] 🙋 Target audience: **18+** (simulated gambling; keeps it out of Families policy)
-- [ ] 🙋 Data safety form (Claude will prepare the answers): name and app activity collected,
-      not shared, deletable, no ads
-- [ ] 🙋 Privacy policy URL and account deletion URL
+- [x] ✅ Store listing text (short and full description) for you to paste
+- [x] ✅ Screenshots (phone, 1080×1920) and feature graphic (1024×500) in `store/`
+- [ ] 🙋 Content rating questionnaire: answers prepared (**yes to simulated gambling**; no real money)
+- [ ] 🙋 Target audience: **18+**
+- [ ] 🙋 Data safety form: answers prepared
+- [ ] 🙋 Privacy policy URL `https://poker.fergtech.ie/privacy.html` and deletion URL
+      `https://poker.fergtech.ie/delete-data.html`
+- [ ] 🙋 Support email address for the listing (shown publicly)
 - [ ] 🙋 Closed test with 12 testers for 14 days (personal account), then apply for production
 
 ## 5. Nice to have before a wide launch

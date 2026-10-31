@@ -1,6 +1,6 @@
 // Service worker: caches the game so it loads instantly and works offline.
 // Bump CACHE when any file changes so phones pick up the new version.
-const CACHE = 'holdem-v6';
+const CACHE = 'holdem-v7';
 const FILES = [
   './',
   './index.html',
@@ -18,6 +18,7 @@ const FILES = [
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
 ];
 

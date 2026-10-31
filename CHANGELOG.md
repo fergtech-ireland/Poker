@@ -6,6 +6,12 @@ Texas Hold'em by FergTech. The version is shown at the foot of every screen
 To release: bump `version` in `version.js`, add an entry here, and bump `CACHE` in `sw.js`
 so installed copies pick up the update.
 
+## 0.6.1 (31 October 2026)
+- Ready for poker.fergtech.ie and the Android app: domain file, app verification file, maskable icon,
+  Android build workflow, Play Store graphics and listing.
+- Tournament winner shows "Winner"; tidier table header on small phones; blind speed option only
+  shows for tournaments.
+
 ## 0.6.0 (31 October 2026)
 - Player profiles: choose a name on first visit; no email or password.
 - Friends: add by friend code or link, invite friends to your table.

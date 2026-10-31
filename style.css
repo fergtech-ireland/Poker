@@ -72,6 +72,8 @@ input.code { text-transform: uppercase; letter-spacing: 4px; text-align: center;
 .room-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .room-bar b { color: #ffd700; letter-spacing: 2px; }
 .room-bar button { padding: 6px 12px; font-size: 14px; }
+.room-bar .room-actions { display: flex; gap: 6px; flex-shrink: 0; }
+#game-info { display: block; color: #aaa; font-size: 12px; margin-top: 2px; }
 
 .doc h3 { margin: 16px 0 6px; font-size: 16px; }
 .doc li { margin: 4px 0; color: #ccc; }
@@ -118,6 +120,7 @@ a { color: #8fd18f; }
 .choice label:has(input:checked) { background: #0b6623; }
 .choice input { margin-right: 6px; }
 .field { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; color: #ccc; }
+.field[hidden] { display: none; }
 select { font-size: 15px; padding: 8px; border-radius: 6px; background: #1b1b1b; color: #fff; border: 1px solid #555; }
 .hint { color: #999 !important; font-size: 13px; }
 .blinds { color: #cfe; font-size: 13px; margin-bottom: 8px; }

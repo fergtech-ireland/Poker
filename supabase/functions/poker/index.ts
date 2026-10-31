@@ -54,6 +54,7 @@ const store = {
 
 // Only the game's own website (and local testing) may call this from a browser.
 const ALLOWED_ORIGINS = [
+  'https://poker.fergtech.ie',
   'https://fergtech-ireland.github.io',
   /^http:\/\/localhost(:\d+)?$/,
   /^http:\/\/127\.0\.0\.1(:\d+)?$/,

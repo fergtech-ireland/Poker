@@ -216,7 +216,8 @@
       } else if (p.inHand && !p.folded && h && !h.over) {
         cards = cardHTML(null, true) + cardHTML(null, true);
       }
-      if (p.place) status = `Out: ${ordinal(p.place)}`;
+      if (p.place === 1) status = '🏆 Winner';
+      else if (p.place) status = `Out: ${ordinal(p.place)}`;
       else if (p.watching) status = 'Watching';
       else if (p.leaving) status = 'Left';
       else if (p.folded && h && !h.over) status = 'Folded';
