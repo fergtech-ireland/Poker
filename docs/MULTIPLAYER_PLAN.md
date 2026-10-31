@@ -60,14 +60,14 @@ phone sees the same table. If a phone did this, its owner could peek at everyone
 
 ## Steps
 1. [x] Supabase project `poker` (eu-west-1, free plan).
-2. [ ] Multi-player game engine (pure JS, unit-tested with thousands of random hands: chips always
+2. [x] Multi-player game engine (pure JS, unit-tested with thousands of random hands: chips always
    conserved, side pots correct).
-3. [ ] Database: tables, row-level security, version-checked save function, realtime.
-4. [ ] Edge Function wrapping the engine; deploy; test against the live project.
-5. [ ] Friends page: create/join, lobby, table for up to 6, share link, reconnect after closing
+3. [x] Database: tables, row-level security, version-checked save function, realtime.
+4. [x] Edge Function wrapping the engine; deploy; test against the live project.
+5. [x] Friends page: create/join, lobby, table for up to 6, share link, reconnect after closing
    the app.
-6. [ ] Navigation between "vs Computer" and "With Friends", offline caching, README.
-7. [ ] End-to-end browser test with several simulated players; deploy to GitHub Pages.
+6. [x] Navigation between "vs Computer" and "With Friends", offline caching, README.
+7. [x] End-to-end browser test with several simulated players; deploy to GitHub Pages.
 
 ## Later ideas (not in this version)
 - No-limit betting with a bet slider.

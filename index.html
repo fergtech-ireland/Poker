@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Texas Hold'em</title>
   <meta name="theme-color" content="#1b1b1b">
-  <meta name="description" content="Simple heads-up Texas Hold'em against the computer, with win/loss stats.">
+  <meta name="description" content="Simple Texas Hold'em against the computer or with friends, with win/loss stats.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -13,71 +13,12 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Hold'em">
-  <style>
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { background: #1b1b1b; }
-    body { font-family: Arial, sans-serif; color: #eee; margin: 0;
-           padding: max(16px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
-                    max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
-           touch-action: manipulation; -webkit-user-select: none; user-select: none; }
-    .wrap { max-width: 760px; margin: 0 auto; }
-    h1 { text-align: center; margin: 0 0 12px; font-size: 26px; }
-    .stats { display: flex; justify-content: space-around; background: #2c2c2c; border-radius: 8px; padding: 10px; margin-bottom: 12px; text-align: center; }
-    .stats div span { display: block; font-size: 22px; font-weight: bold; }
-    .stats small { color: #aaa; }
-    .table { background: #0b6623; border: 8px solid #5a3a1a; border-radius: 120px; padding: 24px 32px; text-align: center; }
-    .seat { margin: 8px 0; }
-    .seat-info { font-size: 15px; margin: 6px 0; }
-    .tag { background: #fff; color: #000; border-radius: 50%; padding: 1px 6px; font-size: 12px; font-weight: bold; margin-left: 6px; }
-    .bet { color: #ffd700; margin-left: 10px; }
-    .hand-name { color: #cfe; font-style: italic; margin-left: 10px; }
-    .cards { display: flex; justify-content: center; gap: 8px; min-height: 84px; }
-    .card { width: 56px; height: 80px; background: #fff; color: #111; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,.4); }
-    .card.red { color: #c00; }
-    .card.back { background: repeating-linear-gradient(45deg, #1e3c8c, #1e3c8c 6px, #2a52b8 6px, #2a52b8 12px); border: 2px solid #fff; }
-    .card.empty { background: rgba(0,0,0,.15); box-shadow: none; border: 1px dashed rgba(255,255,255,.3); }
-    .middle { margin: 18px 0; }
-    .pot { font-size: 18px; margin-bottom: 8px; }
-    .message { min-height: 24px; text-align: center; margin: 12px 0; font-size: 17px; font-weight: bold; }
-    .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
-    button { font-size: 16px; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; background: #e0e0e0; color: #111; }
-    button:disabled { opacity: .4; cursor: default; }
-    #fold-btn { background: #d9534f; color: #fff; }
-    #call-btn { background: #5bc0de; }
-    #raise-btn { background: #f0ad4e; }
-    #next-btn { background: #5cb85c; color: #fff; }
-    #reset-btn { font-size: 12px; padding: 4px 10px; background: #555; color: #ddd; }
-    .log { background: #2c2c2c; border-radius: 8px; padding: 8px 12px; margin-top: 14px; max-height: 180px; overflow-y: auto; font-size: 14px; }
-    .log ul { list-style: none; padding: 0; margin: 0; }
-    .log li { padding: 2px 0; border-bottom: 1px solid #383838; }
-    .footer { text-align: center; margin-top: 10px; }
-    .equity-box { margin-top: 8px; font-size: 14px; color: #cfe; min-height: 18px; }
-    .equity-box .label { color: #fff; margin-right: 4px; }
-    .equity span { opacity: .7; white-space: nowrap; }
-    .equity span.now { opacity: 1; color: #ffd700; font-size: 16px; }
-
-    /* Phones */
-    @media (max-width: 520px) {
-      h1 { font-size: 22px; margin-bottom: 8px; }
-      .stats { padding: 8px 4px; }
-      .stats div span { font-size: 18px; }
-      .stats small { font-size: 11px; }
-      .table { border-radius: 40px; border-width: 6px; padding: 14px 8px; }
-      .cards { gap: 5px; min-height: 68px; }
-      .card { width: 46px; height: 66px; font-size: 18px; }
-      .middle { margin: 12px 0; }
-      .seat-info { font-size: 14px; }
-      .bet, .hand-name { display: inline-block; margin-left: 6px; }
-      .message { font-size: 15px; margin: 10px 0; }
-      .controls { gap: 8px; flex-wrap: nowrap; }
-      .controls button { flex: 1; padding: 14px 4px; font-size: 16px; }
-      .log { max-height: 140px; font-size: 13px; }
-    }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="wrap">
   <h1>Texas Hold'em</h1>
+  <nav class="nav"><a href="./" class="active">vs Computer</a><a href="friends.html">With Friends</a></nav>
 
   <div class="stats">
     <div><span id="stat-played">0</span><small>Hands</small></div>
