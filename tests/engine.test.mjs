@@ -14,7 +14,7 @@ const test = async (name, fn) => {
 
 // In-memory stand-in for the database (rooms + leagues), with version checks like the real one.
 function makeStore() {
-  const rooms = new Map(), leagues = new Map();
+  const rooms = new Map(), leagues = new Map(), profiles = new Map();
   const table = (map, key) => ({
     async load(code) { const r = map.get(code); return r && { version: r.version, [key]: structuredClone(r.data) }; },
     async save(code, expected, data) {
@@ -26,8 +26,23 @@ function makeStore() {
       return true;
     },
   });
-  const r = table(rooms, 'room'), l = table(leagues, 'league');
-  const store = { load: r.load, save: r.save, loadLeague: l.load, saveLeague: l.save, rooms, leagues, failNextSave: false };
+  const r = table(rooms, 'room'), l = table(leagues, 'league'), pr = table(profiles, 'profile');
+  const store = {
+    load: r.load, save: r.save, loadLeague: l.load, saveLeague: l.save, rooms, leagues, profiles, failNextSave: false,
+    loadProfile: pr.load,
+    async saveProfile(id, code, expected, profile) {
+      if (expected === 0 && [...profiles.values()].some(x => x.data.friendCode === code)) return false;
+      return pr.save(id, expected, profile);
+    },
+    async findProfileByFriendCode(code) { for (const [id, x] of profiles) if (x.data.friendCode === code) return id; return null; },
+    async deleteProfile(id) { profiles.delete(id); },
+    limits: new Map(), limitOverride: null,
+    async rateLimit(key, limit) {
+      const n = (store.limits.get(key) || 0) + 1;
+      store.limits.set(key, n);
+      return n <= (store.limitOverride ?? limit);
+    },
+  };
   return store;
 }
 
@@ -319,6 +334,7 @@ await test('tournament: leaving knocks you out; late joiners watch until the nex
 await test('league: tournament results and hands go into the league table', async () => {
   const store = makeStore();
   const prof = i => ({ id: 'deviceprofile' + i, secret: 'secret-secret-secret-' + i });
+  for (const [i, name] of [[1, 'Alice'], [2, 'Bob'], [3, 'Cara']]) await handle({ action: 'profile_save', profile: prof(i), name }, store, 0);
   const lg = await handle({ action: 'league_create', leagueName: 'Friday Night', name: 'Alice', profile: prof(1) }, store, 0);
   assert.match(lg.league.code, /^[A-Z]{6}$/);
   const code = lg.league.code;
@@ -372,6 +388,64 @@ await test('cash is the default mode, and rooms saved by the previous version st
   await handle({ action: 'join', code: a.code, name: 'Bob' }, store, 0);
   const s = await handle({ action: 'start', code: a.code, token: a.token }, store, 0);
   assert.equal(s.state.hand.no, 1);
+});
+
+await test('profiles: create, rename, friends, invites, delete', async () => {
+  const store = makeStore();
+  const prof = i => ({ id: 'phoneprofile' + i, secret: 'a-long-secret-value-' + i });
+  const a = await handle({ action: 'profile_save', profile: prof(1), name: 'Ann' }, store, 0);
+  assert.match(a.profile.friendCode, /^[A-HJ-NP-Z2-9]{8}$/);
+  const b = await handle({ action: 'profile_save', profile: prof(2), name: 'Ben<script>' }, store, 0);
+  assert.equal(b.profile.name, 'Benscript');                      // no markup in names
+  await assert.rejects(handle({ action: 'profile_get', profile: { id: prof(1).id, secret: 'wrong-secret-wrong-secret' } }, store, 0), /verify/);
+  await assert.rejects(handle({ action: 'profile_get', profile: prof(9) }, store, 0), /Profile not found/);
+  const renamed = await handle({ action: 'profile_save', profile: prof(1), name: 'Annie' }, store, 0);
+  assert.equal(renamed.profile.name, 'Annie');
+  assert.equal(renamed.profile.friendCode, a.profile.friendCode); // code doesn't change
+
+  await assert.rejects(handle({ action: 'friend_add', profile: prof(1), friendCode: a.profile.friendCode }, store, 0), /your own/);
+  await assert.rejects(handle({ action: 'friend_add', profile: prof(1), friendCode: 'ZZZZZZZZ' }, store, 0), /No player/);
+  const af = await handle({ action: 'friend_add', profile: prof(1), friendCode: b.profile.friendCode.toLowerCase() }, store, 0);
+  assert.deepEqual(af.profile.friends.map(f => f.name), ['Benscript']);
+  const bf = await handle({ action: 'profile_get', profile: prof(2) }, store, 0);
+  assert.deepEqual(bf.profile.friends.map(f => f.name), ['Annie']); // friendship works both ways
+
+  // Invites need you to be at the table and the other person to be a friend.
+  const t = await handle({ action: 'create', name: 'ignored', profile: prof(1) }, store, 0);
+  assert.equal(t.state.players[0].name, 'Annie');                 // tables use the profile name
+  await assert.rejects(handle({ action: 'invite', profile: prof(2), friendId: prof(1).id, room: t.code }, store, 0), /Join a table/);
+  await handle({ action: 'invite', profile: prof(1), friendId: prof(2).id, room: t.code }, store, 0);
+  let bv = await handle({ action: 'profile_get', profile: prof(2) }, store, 1000);
+  assert.equal(bv.profile.invites.length, 1);
+  assert.equal(bv.profile.invites[0].fromName, 'Annie');
+  assert.equal(bv.profile.invites[0].room, t.code);
+  bv = await handle({ action: 'profile_get', profile: prof(2) }, store, 4 * 3600 * 1000);
+  assert.equal(bv.profile.invites.length, 0);                     // invites expire after 3 hours
+  await handle({ action: 'invite', profile: prof(1), friendId: prof(2).id, room: t.code }, store, 5 * 3600 * 1000);
+  bv = await handle({ action: 'invite_dismiss', profile: prof(2), room: t.code }, store, 5 * 3600 * 1000);
+  assert.equal(bv.profile.invites.length, 0);
+
+  // Delete: friends forget you, leagues keep results without your name.
+  const lg = await handle({ action: 'league_create', leagueName: 'Club', profile: prof(1) }, store, 0);
+  await handle({ action: 'league_join', code: lg.league.code, profile: prof(2) }, store, 0);
+  const lgRoom = store.leagues.get(lg.league.code).data;
+  lgRoom.tournaments.push({ date: 0, players: 2, standings: [{ name: 'Annie', profileId: prof(1).id, place: 1, points: 2 }] });
+  await handle({ action: 'profile_delete', profile: prof(1) }, store, 0);
+  assert.ok(!store.profiles.has(prof(1).id));
+  bv = await handle({ action: 'profile_get', profile: prof(2) }, store, 0);
+  assert.equal(bv.profile.friends.length, 0);
+  const view = await handle({ action: 'league_view', code: lg.league.code }, store, 0);
+  assert.ok(view.league.members.some(m => m.name === 'Deleted player'));
+  assert.ok(!JSON.stringify(view).includes('Annie'));
+  assert.ok(!JSON.stringify(store.leagues.get(lg.league.code).data).includes('Annie'));
+  await assert.rejects(handle({ action: 'profile_get', profile: prof(1) }, store, 0), /Profile not found/);
+});
+
+await test('rate limits stop floods of new rooms', async () => {
+  const store = makeStore();
+  for (let i = 0; i < 30; i++) await handle({ action: 'create', name: 'Spam' }, store, 0, { ip: '1.2.3.4' });
+  await assert.rejects(handle({ action: 'create', name: 'Spam' }, store, 0, { ip: '1.2.3.4' }), /Too many requests/);
+  await handle({ action: 'create', name: 'Other' }, store, 0, { ip: '5.6.7.8' }); // other people unaffected
 });
 
 console.log(`\n${passed} tests passed${process.exitCode ? ', some FAILED' : ''}`);

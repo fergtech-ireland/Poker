@@ -51,7 +51,7 @@ const nameOf = (room, id) => (player(room, id) || {}).name || '?';
 const isTournament = room => room.mode === 'tournament';
 
 export function cleanName(name, max = 16) {
-  name = String(name || '').replace(/\s+/g, ' ').trim().slice(0, max);
+  name = String(name || '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
   if (!name) fail('Please enter a name.');
   return name;
 }

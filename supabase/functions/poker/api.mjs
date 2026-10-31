@@ -7,7 +7,22 @@
 // store.loadLeague(code)                          -> { version, league } | null
 // store.saveLeague(code, expectedVersion, league) -> true / false
 //   (expectedVersion 0 means "create")
+// store.rateLimit(key, limit, windowSeconds)      -> true if allowed (optional)
+// plus the profile methods listed in profiles.mjs
 import * as E from './engine.mjs';
+import { profileAction, verifiedProfile, noteLeague } from './profiles.mjs';
+
+// Requests allowed per caller (by hashed IP address) per time window.
+const LIMITS = {
+  all: [600, 60],              // any request: 600 a minute
+  room_create: [30, 3600],
+  room_join: [120, 3600],
+  league_create: [10, 3600],
+  league_join: [60, 3600],
+  profile_create: [10, 3600],
+  friend_add: [60, 3600],
+  invite: [120, 3600],
+};
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O, to avoid confusion with 1 and 0
 const busyError = () => new E.GameError('The server is busy, please try again.');
@@ -21,6 +36,18 @@ export function secureRandom() {
 async function sha256(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text)));
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function rateLimiter(store, ip) {
+  let keyP = null;
+  return async kind => {
+    if (!store.rateLimit) return;
+    keyP = keyP || sha256('holdem-rate:' + (ip || 'unknown')).then(h => h.slice(0, 24));
+    const [limit, seconds] = LIMITS[kind];
+    if (!(await store.rateLimit(`${kind}:${await keyP}`, limit, seconds))) {
+      throw new E.GameError('Too many requests. Please wait a little and try again.');
+    }
+  };
 }
 
 function randomCode(length) {
@@ -93,7 +120,7 @@ function applyEvents(league, events) {
         if (s.place === 1) m.wins++;
         if (s.place <= 3) m.podiums++;
       }
-      league.tournaments.unshift({ date: ev.date, players: ev.players, standings: ev.standings.map(({ name, place, points }) => ({ name, place, points })) });
+      league.tournaments.unshift({ date: ev.date, players: ev.players, standings: ev.standings.map(({ name, profileId, place, points }) => ({ name, profileId, place, points })) });
       if (league.tournaments.length > 30) league.tournaments.length = 30;
     }
   }
@@ -109,7 +136,9 @@ export function leagueView(league, profileId) {
   })).sort((a, b) => b.points - a.points || b.wins - a.wins || (b.winPct || 0) - (a.winPct || 0) || a.name.localeCompare(b.name));
   return {
     code: league.code, name: league.name, members,
-    recent: league.tournaments.slice(0, 10),
+    recent: league.tournaments.slice(0, 10).map(t => ({
+      date: t.date, players: t.players, standings: t.standings.map(({ name, place, points }) => ({ name, place, points })),
+    })),
     isMember: !!(profileId && league.members[profileId]),
   };
 }
@@ -125,23 +154,29 @@ async function updateLeague(store, code, change) {
   throw busyError();
 }
 
-async function leagueAction(action, body, store, now) {
+async function leagueAction(action, body, store, now, rateLimit) {
   if (action === 'league_create') {
+    await rateLimit('league_create');
     const leagueName = E.cleanName(body.leagueName, 30);
-    const name = E.cleanName(body.name);
     const profile = cleanProfile(body.profile, true);
+    const { profile: me } = await verifiedProfile(store, profile);
     for (let attempt = 0; attempt < 6; attempt++) {
       const league = newLeague(randomCode(6), leagueName, now);
-      await addMember(league, profile, name, now);
-      if (await store.saveLeague(league.code, 0, league)) return { ok: true, league: leagueView(league, profile.id) };
+      await addMember(league, profile, me.name, now);
+      if (await store.saveLeague(league.code, 0, league)) {
+        await noteLeague(store, me.id, league.code);
+        return { ok: true, league: leagueView(league, profile.id) };
+      }
     }
     throw busyError();
   }
   const code = cleanCode(body.code, 6);
   const profile = cleanProfile(body.profile, action === 'league_join');
   if (action === 'league_join') {
-    const name = E.cleanName(body.name);
-    const league = await updateLeague(store, code, l => addMember(l, profile, name, now));
+    await rateLimit('league_join');
+    const { profile: me } = await verifiedProfile(store, profile);
+    const league = await updateLeague(store, code, l => addMember(l, profile, me.name, now));
+    await noteLeague(store, me.id, code);
     return { ok: true, league: leagueView(league, profile.id) };
   }
   const loaded = await store.loadLeague(code);
@@ -172,18 +207,28 @@ async function saveRoom(store, code, version, room, now) {
   return true;
 }
 
-export async function handle(body, store, now = Date.now()) {
+// ctx: { ip } from the server, for rate limits
+export async function handle(body, store, now = Date.now(), ctx = {}) {
   const action = String(body.action || '');
-  if (action.startsWith('league_')) return leagueAction(action, body, store, now);
+  const rateLimit = rateLimiter(store, ctx.ip);
+  await rateLimit('all');
+  if (action.startsWith('league_')) return leagueAction(action, body, store, now, rateLimit);
+  if (action.startsWith('profile_') || action.startsWith('friend_') || action.startsWith('invite')) {
+    return profileAction(action, body, store, { now, rand: secureRandom, rateLimit, updateLeague });
+  }
 
   if (action === 'create') {
-    const name = E.cleanName(body.name);
+    await rateLimit('room_create');
+    let name = E.cleanName(body.name);
     const profile = cleanProfile(body.profile, false);
+    // With a saved profile, the table uses the profile's name.
+    if (profile && store.loadProfile && await store.loadProfile(profile.id)) name = (await verifiedProfile(store, profile)).profile.name;
     let league = null;
     if (body.league) {
       if (!profile) throw new E.GameError('Missing player profile. Please reload the page.');
       const l = await updateLeague(store, cleanCode(body.league, 6), l => addMember(l, profile, name, now));
       league = { code: l.code, name: l.name };
+      await noteLeague(store, profile.id, l.code);
     }
     for (let attempt = 0; attempt < 6; attempt++) {
       const code = randomCode(4);
@@ -213,13 +258,16 @@ export async function handle(body, store, now = Date.now()) {
 
     if (action === 'join') {
       if (me) return views(room, me.id, now, { code, playerId: me.id, token: body.token }); // rejoining
-      const name = E.cleanName(body.name);
+      if (!leagueChecked) await rateLimit('room_join');
+      let name = E.cleanName(body.name);
+      if (profile && store.loadProfile && await store.loadProfile(profile.id)) name = (await verifiedProfile(store, profile)).profile.name;
       // League tables: joining the table also joins its league.
       if (room.league && !leagueChecked) {
         if (!profile) throw new E.GameError('Missing player profile. Please reload the page.');
         await updateLeague(store, room.league.code, l => addMember(l, profile, name, now));
-        leagueChecked = true;
+        await noteLeague(store, profile.id, room.league.code);
       }
+      leagueChecked = true;
       const token = crypto.randomUUID();
       const id = newId();
       E.addPlayer(room, { id, name, tokenHash: await sha256(token), profileId: profile && profile.id });
