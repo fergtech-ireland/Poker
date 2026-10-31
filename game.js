@@ -83,6 +83,7 @@
     g.street = 0;
     g.handOver = false;
     g.showCpu = false;
+    g.equity = []; // your win chance after each deal: [{ street, pct }]
     $('message').textContent = '';
     $('next-btn').hidden = true;
     $('log').innerHTML = '';
@@ -92,6 +93,7 @@
     commit(bb, BIG_BLIND);
     log(`New hand. ${NAMES[sb]} post${sb === YOU ? '' : 's'} the small blind (${SMALL_BLIND}), ` +
         `${NAMES[bb]} post${bb === YOU ? '' : 's'} the big blind (${BIG_BLIND}).`);
+    log(`Your cards: ${g.hole[YOU].map(Poker.cardLabel).join(' ')}. ${updateEquity()}`);
     g.acted = [false, false];
     g.raises = 1; // the big blind counts as the first bet
     g.toAct = sb; // heads-up: small blind acts first pre-flop
@@ -150,7 +152,15 @@
     g.street++;
     const n = g.street === 1 ? 3 : 1;
     for (let i = 0; i < n; i++) g.board.push(g.deck.pop());
-    log(`${STREETS[g.street]}: ${g.board.map(Poker.cardLabel).join(' ')}`);
+    log(`${STREETS[g.street]}: ${g.board.map(Poker.cardLabel).join(' ')}. ${updateEquity()}`);
+  }
+
+  // Your chance of winning from here against any hand the computer could hold
+  // (its cards are hidden, so they're treated as unknown). Ties count as half.
+  function updateEquity() {
+    const pct = Math.round(Poker.estimateEquity(g.hole[YOU], g.board, 1500) * 100);
+    g.equity.push({ street: STREETS[g.street], pct });
+    return `Your win chance: ${pct}%`;
   }
 
   function nextStreet() {
@@ -252,6 +262,9 @@
     $('cpu-dealer').hidden = g.dealer !== CPU || g.handOver;
     $('pot').textContent = pot();
     $('street').textContent = g.handOver ? '' : STREETS[g.street];
+    $('equity').innerHTML = g.equity.map((e, i) =>
+      `<span${i === g.equity.length - 1 ? ' class="now"' : ''}>${i ? '→ ' : ''}${e.street} <b>${e.pct}%</b></span>`
+    ).join(' ');
 
     if (g.showCpu && g.board.length === 5) {
       $('your-hand-name').textContent = Poker.handName(Poker.bestHand(g.hole[YOU].concat(g.board)));

@@ -20,6 +20,7 @@ After it's installed, it opens full-screen like a normal app and works offline.
 - Each player starts with 1000 chips. Blinds are 10/20, and the dealer button switches every hand.
 - Betting is fixed-limit: bets are 20 before the flop and on the flop, and 40 on the turn and river. Each street allows at most 4 bets.
 - Use **Fold**, **Check/Call** and **Bet/Raise** to act, then **Next Hand** to continue.
+- Under your cards, **Win chance** shows your chance of winning the hand after each deal (pre-flop, flop, turn, river). The computer's cards are hidden, so it's worked out against every hand it could hold; ties count as half a win. The log records it too.
 - If either player runs out of chips, both stacks reset to 1000.
 
 ## Stats

@@ -85,10 +85,21 @@
 
   // Estimate the chance `hole` beats one random opponent hand,
   // given the known board. Ties count as half.
+  // On the river the answer is exact: every possible opponent hand is checked.
   function estimateEquity(hole, board, iterations = 400) {
     const known = new Set([...hole, ...board].map(c => c.r * 4 + c.s));
     const rest = newDeck().filter(c => !known.has(c.r * 4 + c.s));
     let score = 0;
+    if (board.length === 5) {
+      const mine = bestHand(hole.concat(board));
+      let n = 0;
+      for (let a = 0; a < rest.length; a++)
+        for (let b = a + 1; b < rest.length; b++, n++) {
+          const cmp = compareScores(mine, bestHand([rest[a], rest[b]].concat(board)));
+          score += cmp > 0 ? 1 : cmp === 0 ? 0.5 : 0;
+        }
+      return score / n;
+    }
     for (let i = 0; i < iterations; i++) {
       // Partial shuffle: we only need 2 + (5 - board.length) cards.
       const need = 2 + (5 - board.length);

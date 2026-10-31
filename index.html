@@ -51,6 +51,10 @@
     .log ul { list-style: none; padding: 0; margin: 0; }
     .log li { padding: 2px 0; border-bottom: 1px solid #383838; }
     .footer { text-align: center; margin-top: 10px; }
+    .equity-box { margin-top: 8px; font-size: 14px; color: #cfe; min-height: 18px; }
+    .equity-box .label { color: #fff; margin-right: 4px; }
+    .equity span { opacity: .7; white-space: nowrap; }
+    .equity span.now { opacity: 1; color: #ffd700; font-size: 16px; }
 
     /* Phones */
     @media (max-width: 520px) {
@@ -103,6 +107,7 @@
         You: <b id="your-chips">1000</b> chips<span class="tag" id="your-dealer" hidden>D</span>
         <span class="bet" id="your-bet"></span><span class="hand-name" id="your-hand-name"></span>
       </div>
+      <div class="equity-box"><span class="label">Win chance:</span><span class="equity" id="equity"></span></div>
     </div>
   </div>
 
