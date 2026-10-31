@@ -15,9 +15,10 @@
     return deck;
   }
 
-  function shuffle(deck) {
+  // `rand` returns a number in [0, 1). The server passes a cryptographically secure one.
+  function shuffle(deck, rand = Math.random) {
     for (let i = deck.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(rand() * (i + 1));
       [deck[i], deck[j]] = [deck[j], deck[i]];
     }
     return deck;
@@ -83,14 +84,14 @@
     return HAND_NAMES[score[0]];
   }
 
-  // Estimate the chance `hole` beats one random opponent hand,
-  // given the known board. Ties count as half.
-  // On the river the answer is exact: every possible opponent hand is checked.
-  function estimateEquity(hole, board, iterations = 400) {
+  // Estimate the chance `hole` wins against `opponents` random hands, given the
+  // known board. A tie counts as a share of the pot (1/2 for a two-way tie, etc).
+  // Heads-up on the river the answer is exact: every possible opponent hand is checked.
+  function estimateEquity(hole, board, iterations = 400, opponents = 1) {
     const known = new Set([...hole, ...board].map(c => c.r * 4 + c.s));
     const rest = newDeck().filter(c => !known.has(c.r * 4 + c.s));
     let score = 0;
-    if (board.length === 5) {
+    if (board.length === 5 && opponents === 1) {
       const mine = bestHand(hole.concat(board));
       let n = 0;
       for (let a = 0; a < rest.length; a++)
@@ -100,22 +101,27 @@
         }
       return score / n;
     }
+    const need = 2 * opponents + (5 - board.length);
     for (let i = 0; i < iterations; i++) {
-      // Partial shuffle: we only need 2 + (5 - board.length) cards.
-      const need = 2 + (5 - board.length);
+      // Partial shuffle: only the cards we need.
       for (let k = 0; k < need; k++) {
         const j = k + Math.floor(Math.random() * (rest.length - k));
         [rest[k], rest[j]] = [rest[j], rest[k]];
       }
-      const opp = [rest[0], rest[1]];
-      const fullBoard = board.concat(rest.slice(2, need));
-      const cmp = compareScores(bestHand(hole.concat(fullBoard)), bestHand(opp.concat(fullBoard)));
-      score += cmp > 0 ? 1 : cmp === 0 ? 0.5 : 0;
+      const fullBoard = board.concat(rest.slice(2 * opponents, need));
+      const mine = bestHand(hole.concat(fullBoard));
+      let tied = 0, lost = false;
+      for (let o = 0; o < opponents && !lost; o++) {
+        const cmp = compareScores(mine, bestHand([rest[2 * o], rest[2 * o + 1]].concat(fullBoard)));
+        if (cmp < 0) lost = true;
+        else if (cmp === 0) tied++;
+      }
+      if (!lost) score += 1 / (tied + 1);
     }
     return score / iterations;
   }
 
   const api = { newDeck, shuffle, cardLabel, evaluate5, bestHand, compareScores, handName, estimateEquity };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.Poker = api;
-})(this);
+  if (root) root.Poker = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
