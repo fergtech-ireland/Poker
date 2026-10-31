@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Texas Hold'em</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #1b1b1b; color: #eee; margin: 0; padding: 16px; }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    h1 { text-align: center; margin: 0 0 12px; font-size: 26px; }
+    .stats { display: flex; justify-content: space-around; background: #2c2c2c; border-radius: 8px; padding: 10px; margin-bottom: 12px; text-align: center; }
+    .stats div span { display: block; font-size: 22px; font-weight: bold; }
+    .stats small { color: #aaa; }
+    .table { background: #0b6623; border: 8px solid #5a3a1a; border-radius: 120px; padding: 24px 32px; text-align: center; }
+    .seat { margin: 8px 0; }
+    .seat-info { font-size: 15px; margin: 6px 0; }
+    .tag { background: #fff; color: #000; border-radius: 50%; padding: 1px 6px; font-size: 12px; font-weight: bold; margin-left: 6px; }
+    .bet { color: #ffd700; margin-left: 10px; }
+    .hand-name { color: #cfe; font-style: italic; margin-left: 10px; }
+    .cards { display: flex; justify-content: center; gap: 8px; min-height: 84px; }
+    .card { width: 56px; height: 80px; background: #fff; color: #111; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,.4); }
+    .card.red { color: #c00; }
+    .card.back { background: repeating-linear-gradient(45deg, #1e3c8c, #1e3c8c 6px, #2a52b8 6px, #2a52b8 12px); border: 2px solid #fff; }
+    .card.empty { background: rgba(0,0,0,.15); box-shadow: none; border: 1px dashed rgba(255,255,255,.3); }
+    .middle { margin: 18px 0; }
+    .pot { font-size: 18px; margin-bottom: 8px; }
+    .message { min-height: 24px; text-align: center; margin: 12px 0; font-size: 17px; font-weight: bold; }
+    .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+    button { font-size: 16px; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; background: #e0e0e0; color: #111; }
+    button:disabled { opacity: .4; cursor: default; }
+    #fold-btn { background: #d9534f; color: #fff; }
+    #call-btn { background: #5bc0de; }
+    #raise-btn { background: #f0ad4e; }
+    #next-btn { background: #5cb85c; color: #fff; }
+    #reset-btn { font-size: 12px; padding: 4px 10px; background: #555; color: #ddd; }
+    .log { background: #2c2c2c; border-radius: 8px; padding: 8px 12px; margin-top: 14px; max-height: 180px; overflow-y: auto; font-size: 14px; }
+    .log ul { list-style: none; padding: 0; margin: 0; }
+    .log li { padding: 2px 0; border-bottom: 1px solid #383838; }
+    .footer { text-align: center; margin-top: 10px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Texas Hold'em</h1>
+
+  <div class="stats">
+    <div><span id="stat-played">0</span><small>Hands</small></div>
+    <div><span id="stat-wins">0</span><small>Wins</small></div>
+    <div><span id="stat-losses">0</span><small>Losses</small></div>
+    <div><span id="stat-ties">0</span><small>Ties</small></div>
+    <div><span id="stat-pct">0.0%</span><small>Win %</small></div>
+  </div>
+
+  <div class="table">
+    <div class="seat">
+      <div class="seat-info">
+        Computer: <b id="cpu-chips">1000</b> chips<span class="tag" id="cpu-dealer" hidden>D</span>
+        <span class="bet" id="cpu-bet"></span><span class="hand-name" id="cpu-hand-name"></span>
+      </div>
+      <div class="cards" id="cpu-cards"></div>
+    </div>
+
+    <div class="middle">
+      <div class="pot">Pot: <b id="pot">0</b> <small id="street"></small></div>
+      <div class="cards" id="board"></div>
+    </div>
+
+    <div class="seat">
+      <div class="cards" id="your-cards"></div>
+      <div class="seat-info">
+        You: <b id="your-chips">1000</b> chips<span class="tag" id="your-dealer" hidden>D</span>
+        <span class="bet" id="your-bet"></span><span class="hand-name" id="your-hand-name"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="message" id="message"></div>
+
+  <div class="controls">
+    <button id="fold-btn">Fold</button>
+    <button id="call-btn">Check</button>
+    <button id="raise-btn">Raise</button>
+    <button id="next-btn" hidden>Next Hand</button>
+  </div>
+
+  <div class="log"><ul id="log"></ul></div>
+
+  <div class="footer"><button id="reset-btn">Reset Stats</button></div>
+</div>
+
+<script src="poker.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
