@@ -6,6 +6,14 @@ Texas Hold'em by FergTech. The version is shown at the foot of every screen
 To release: bump `version` in `version.js`, add an entry here, and bump `CACHE` in `sw.js`
 so installed copies pick up the update.
 
+## 0.6.0 (31 October 2026)
+- Player profiles: choose a name on first visit; no email or password.
+- Friends: add by friend code or link, invite friends to your table.
+- Move your profile to a new phone with a transfer code; Delete my profile.
+- Privacy policy and data deletion pages.
+- Security: tables are no longer publicly readable, the server only accepts requests from the app's
+  website, rate limits stop spam, and a Content Security Policy blocks injected scripts.
+
 ## 0.5.0 (31 October 2026)
 - Tournaments: no rebuys, rising blinds, knock-outs with finishing places, last one standing wins.
 - Leagues: private groups with a league table (points, wins, average finish, hands won).

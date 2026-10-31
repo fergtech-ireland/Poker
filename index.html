@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Texas Hold'em</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://lcekdvxhuimoxpiadism.supabase.co wss://lcekdvxhuimoxpiadism.supabase.co; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="theme-color" content="#1b1b1b">
   <meta name="description" content="Simple Texas Hold'em against the computer or with friends, with win/loss stats.">
   <link rel="manifest" href="manifest.webmanifest">
@@ -70,11 +71,6 @@
 <script src="version.js"></script>
 <script src="poker.js"></script>
 <script src="game.js"></script>
-<script>
-  // Offline/install support (only works when served over http/https, not file://)
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
-  }
-</script>
+<script src="sw-register.js"></script>
 </body>
 </html>

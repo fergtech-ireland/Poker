@@ -14,26 +14,26 @@ Friends and leagues need a lasting identity, so people need a **profile**. To ke
 private there's **no email or password**: the profile is created the first time someone opens Play with
 Friends.
 
-- [ ] 🤖 Server-side profiles: display name, private key kept on the phone, friend code
-- [ ] 🤖 Rename yourself; your name is used at tables and in leagues
-- [ ] 🤖 Friends: add by friend code or link, list, remove
-- [ ] 🤖 Invite friends to your table (they see the invite in the app)
-- [ ] 🤖 Move your profile to a new phone with a transfer code
-- [ ] 🤖 **Delete my profile** in the app: removes the profile and friends, and anonymises league history
-- [ ] 🤖 Web page explaining how to delete your data (Play requires one)
+- [x] ✅ Server-side profiles: display name, private key kept on the phone, friend code
+- [x] ✅ Rename yourself; your name is used at tables and in leagues
+- [x] ✅ Friends: add by friend code or link, list, remove
+- [x] ✅ Invite friends to your table (they see the invite in the app)
+- [x] ✅ Move your profile to a new phone with a transfer code
+- [x] ✅ **Delete my profile** in the app: removes the profile and friends, and anonymises league history
+- [x] ✅ Web page explaining how to delete your data (Play requires one)
 - [ ] 🙋 Later, optional: sign in with Google or email so profiles can't be lost with the phone
 
 ## 2. Security and privacy
 
-- [ ] 🤖 Rooms no longer publicly readable: live updates become content-free "something changed" pings,
+- [x] ✅ Rooms no longer publicly readable: live updates become content-free "something changed" pings,
       and everything else goes through the server, which checks who you are
-- [ ] 🤖 Server only accepts requests from the app's own website (CORS)
-- [ ] 🤖 Rate limits on creating rooms, leagues and profiles (stops spam and abuse)
-- [ ] 🤖 Content Security Policy on the pages (blocks injected scripts)
-- [ ] 🤖 Remove the `pg_net` test extension from the database
-- [ ] 🙋 Approve deleting the test data (room `JUCC`, league `QULZMJ`); Supabase will ask you to confirm
-- [ ] 🤖 Privacy policy page (what's stored, why, how long, how to delete)
-- [ ] 🤖 Re-run Supabase security advisors; fix anything they flag
+- [x] ✅ Server only accepts requests from the app's own website (CORS)
+- [x] ✅ Rate limits on creating rooms, leagues and profiles (stops spam and abuse)
+- [x] ✅ Content Security Policy on the pages (blocks injected scripts)
+- [ ] 🙋 Remove the `pg_net` test extension (still used for live testing; one SQL line when we're done: `drop extension pg_net;`)
+- [ ] 🙋 Delete the test data before launch (league `QULZMJ` and other test leagues; test rooms delete themselves)
+- [x] ✅ Privacy policy page (what's stored, why, how long, how to delete)
+- [x] ✅ Re-run Supabase security advisors; fix anything they flag
 - [ ] 🙋 Supabase: consider the Pro plan before launch (free projects pause after a week without use)
 
 ## 3. Android app (TWA)

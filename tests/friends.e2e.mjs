@@ -37,8 +37,18 @@ const table = (map, key) => ({
     return true;
   },
 });
-const rooms = table(db, 'room'), leagues = table(leagueDb, 'league');
-const store = { load: rooms.load, save: rooms.save, loadLeague: leagues.load, saveLeague: leagues.save };
+const profileDb = new Map();
+const rooms = table(db, 'room'), leagues = table(leagueDb, 'league'), profiles = table(profileDb, 'profile');
+const store = {
+  load: rooms.load, save: rooms.save, loadLeague: leagues.load, saveLeague: leagues.save,
+  loadProfile: profiles.load,
+  async saveProfile(id, code, expected, p) {
+    if (expected === 0 && [...profileDb.values()].some(x => x.data.friendCode === code)) return false;
+    return profiles.save(id, expected, p);
+  },
+  async findProfileByFriendCode(code) { for (const [id, x] of profileDb) if (x.data.friendCode === code) return id; return null; },
+  async deleteProfile(id) { profileDb.delete(id); },
+};
 let calls = 0;
 
 const browser = await chromium.launch();
@@ -54,16 +64,24 @@ async function player(name, device) {
       const body = await handle(JSON.parse(req.postData()), store);
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     } catch (e) {
-      route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: e.message }) });
+      route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: e.message, code: e.code }) });
     }
   });
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push(`${name}: ${e.message}`));
+  page.on('console', m => { if (/Content Security Policy|Refused to/.test(m.text())) errors.push(`${name} CSP: ${m.text()}`); });
   page.on('dialog', d => (d.type() === 'prompt' ? d.accept(name) : d.accept()));
   page.playerName = name;
   return page;
 }
 
+// First visit: choose a player name to create the profile.
+async function setup(page, name) {
+  await page.waitForSelector('#setup-view:not([hidden])');
+  await page.fill('#name-input', name);
+  await page.click('#setup-btn');
+  await page.waitForFunction(() => document.querySelector('#setup-view').hidden);
+}
 const check = (cond, msg) => { if (!cond) throw new Error('Check failed: ' + msg); console.log('ok  ', msg); };
 const totalChips = () => {
   const room = [...db.values()][0].data;
@@ -78,7 +96,9 @@ try {
 
   // Alice creates a room
   await alice.goto(`${BASE}/friends.html`);
-  await alice.fill('#name-input', 'Alice');
+  check(await alice.isVisible('#setup-view'), 'first visit asks for a player name');
+  await setup(alice, 'Alice');
+  check((await alice.textContent('#me-name')) === 'Alice' && /^[A-Z0-9]{8}$/.test(await alice.textContent('#me-code')), 'profile created with an 8-character friend code');
   await alice.click('#create-btn');
   await alice.waitForSelector('#lobby-view:not([hidden])');
   const code = (await alice.textContent('#lobby-code')).trim();
@@ -87,11 +107,12 @@ try {
 
   // Bob joins from the invite link, Cara by typing the code
   await bob.goto(`${BASE}/friends.html?room=${code}`);
-  check((await bob.inputValue('#code-input')) === code, 'invite link pre-fills the room code');
-  await bob.fill('#name-input', 'Bob');
+  await setup(bob, 'Bob');
+  await bob.waitForSelector('#home-view:not([hidden])');
+  check((await bob.inputValue('#code-input')) === code, 'invite link pre-fills the room code after creating a profile');
   await bob.click('#join-btn');
   await cara.goto(`${BASE}/friends.html`);
-  await cara.fill('#name-input', 'Cara');
+  await setup(cara, 'Cara');
   await cara.fill('#code-input', code.toLowerCase());
   await cara.click('#join-btn');
   await cara.waitForSelector('#lobby-view:not([hidden])');
@@ -177,6 +198,7 @@ try {
   check(/^[A-Z]{6}$/.test(leagueCode), `league created with code ${leagueCode}`);
 
   await dave.goto(`${BASE}/friends.html?league=${leagueCode}`);
+  await setup(dave, 'Dave');
   await dave.waitForSelector('#league-view:not([hidden])');
   check(await dave.isVisible('#league-join-here-btn'), 'league link shows the table and a Join button to non-members');
   await dave.click('#league-join-here-btn');
@@ -240,6 +262,71 @@ try {
   check(rowsText[0].includes('Cara') && rowsText[0].includes('2') && rowsText[1].includes('Dave'), `league table: ${rowsText.map(r => r.replace(/\s+/g, ' ')).join(' | ')}`);
   check((await dave.textContent('#league-recent')).includes('1st Cara'), 'recent tournaments list the winner');
   await dave.screenshot({ path: '/tmp/shot-league.png', fullPage: true });
+
+  // ---- Friends, invites, transfer code, delete ----
+  await cara.click('#leave-btn');           // leave the finished tournament table
+  await cara.waitForSelector('#home-view:not([hidden])');
+  const caraCode = (await cara.textContent('#me-code')).trim();
+  await dave.goto(`${BASE}/friends.html?friend=${caraCode}`);
+  await dave.waitForSelector('#home-view:not([hidden])');
+  check((await dave.inputValue('#friend-code-input')) === caraCode, 'friend link pre-fills the friend code');
+  await dave.click('#friend-add-btn');
+  await dave.waitForFunction(() => document.querySelector('#friends-list').textContent.includes('Cara'));
+  await cara.reload();
+  await cara.waitForFunction(() => document.querySelector('#friends-list').textContent.includes('Dave'));
+  check(true, 'friends are added both ways');
+
+  await cara.click('#create-btn');
+  await cara.waitForSelector('#lobby-view:not([hidden])');
+  const icode = (await cara.textContent('#lobby-code')).trim();
+  await cara.click('#lobby-view .invite-friends-btn');
+  await cara.click('#invite-list button[data-invite]');
+  await cara.waitForFunction(() => /Invited/.test(document.querySelector('#invite-list').textContent));
+  await cara.click('#invite-close-btn');
+  await dave.reload();
+  await dave.waitForSelector('#invites-panel:not([hidden])');
+  check((await dave.textContent('#invites-list')).includes('Cara invited you'), 'Dave sees the invite on his start screen');
+  await dave.click('#invites-list button[data-join]');
+  await dave.waitForSelector('#lobby-view:not([hidden])');
+  check((await dave.textContent('#lobby-code')).trim() === icode, 'tapping Join on the invite seats Dave at the table');
+  await cara.waitForFunction(() => document.querySelectorAll('#lobby-list li').length === 2);
+
+  // Transfer code: Cara moves her profile to a "new phone"
+  await cara.click('#lobby-leave-btn');
+  await cara.waitForSelector('#home-view:not([hidden])');
+  await cara.click('#profile-btn');
+  await cara.click('#transfer-btn');
+  const transfer = await cara.inputValue('#transfer-output');
+  const newPhone = await player('Cara2', 'Pixel 7');
+  await newPhone.goto(`${BASE}/friends.html`);
+  await newPhone.waitForSelector('#setup-view:not([hidden])');
+  await newPhone.fill('#restore-input', transfer);
+  await newPhone.click('#restore-btn');
+  await newPhone.waitForSelector('#home-view:not([hidden])');
+  check((await newPhone.textContent('#me-code')).trim() === caraCode && (await newPhone.textContent('#friends-list')).includes('Dave'),
+    'transfer code brings the same profile and friends to a new phone');
+
+  // Delete: Dave deletes his profile
+  await dave.click('#lobby-leave-btn');
+  await dave.waitForSelector('#home-view:not([hidden])');
+  await dave.click('#profile-btn');
+  await dave.click('#delete-btn');
+  await dave.waitForSelector('#setup-view:not([hidden])');
+  const delMsg = await dave.textContent('#setup-error');
+  check(/deleted/.test(delMsg), `deleting the profile returns to the welcome screen ("${delMsg}" at ${dave.url()})`);
+  check(![...profileDb.values()].some(x => x.data.name === 'Dave'), 'Dave\'s profile is gone from the server');
+  check(!JSON.stringify(leagueDb.get(leagueCode).data).includes('"Dave"'), 'Dave\'s name is removed from the league');
+  await newPhone.reload();
+  await newPhone.waitForSelector('#home-view:not([hidden])');
+  check(!(await newPhone.textContent('#friends-list')).includes('Dave'), 'Dave disappears from his friends\' lists');
+  check(await dave.evaluate(() => !localStorage.getItem('holdem-leagues') && !localStorage.getItem('holdem-friends-stats')), 'app data on the phone is cleared');
+  await setup(dave, 'Dave2');
+
+  // Privacy pages
+  await dave.goto(`${BASE}/privacy.html`);
+  check((await dave.textContent('body')).includes('Deleting your data') && (await dave.textContent('[data-release]')).includes('FergTech'), 'privacy policy page loads with the footer');
+  await dave.goto(`${BASE}/delete-data.html`);
+  check((await dave.textContent('body')).includes('Delete my profile'), 'data deletion page loads');
 
   // Not-your-turn and bad room code errors
   await dave.goto(`${BASE}/friends.html`);

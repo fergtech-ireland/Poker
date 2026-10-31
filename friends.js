@@ -46,7 +46,7 @@
     const leagueAction = action.startsWith('league_');
     if (session && !leagueAction && !body.code) body.code = session.code;
     if (session && !leagueAction && !body.token && action !== 'create') body.token = session.token;
-    if (action === 'create' || action === 'join' || leagueAction) body.profile = profile;
+    if (action === 'create' || action === 'join' || leagueAction || /^(profile_|friend_|invite)/.test(action)) body.profile = profile;
     const res = await fetch(FN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: CFG.key },
@@ -54,7 +54,7 @@
     });
     let data;
     try { data = await res.json(); } catch (e) { throw new Error('Could not reach the game server.'); }
-    if (!res.ok || data.error) throw new Error(data.error || 'Something went wrong.');
+    if (!res.ok || data.error) { const e = new Error(data.error || 'Something went wrong.'); e.code = data.code; throw e; }
     return data;
   }
 
@@ -125,7 +125,7 @@
     try {
       const client = window.supabase.createClient(CFG.url, CFG.key);
       channel = client.channel('room-' + session.code)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `code=eq.${session.code}` }, () => refresh())
+        .on('broadcast', { event: 'changed' }, () => refresh())
         .subscribe(status => { live = status === 'SUBSCRIBED'; if (live) refresh(); });
       channel._client = client;
     } catch (e) { live = false; }
@@ -175,7 +175,7 @@
   }
 
   function show(view) {
-    for (const v of ['home-view', 'league-view', 'lobby-view', 'game-view']) $(v).hidden = v !== view;
+    for (const v of ['setup-view', 'profile-view', 'home-view', 'league-view', 'lobby-view', 'game-view']) $(v).hidden = v !== view;
     if (view === 'home-view') renderHome();
     $('loading').hidden = true;
   }
@@ -424,10 +424,8 @@
   }
 
   function nameValue() {
-    const name = $('name-input').value.trim();
-    if (!name) { $('home-error').textContent = 'Please enter your name first.'; $('name-input').focus(); return null; }
-    localStorage.setItem(NAME_KEY, name);
-    return name;
+    if (!myProfile) { show('setup-view'); return null; }
+    return myProfile.name;
   }
 
   async function busy(btn, fn) {
@@ -499,6 +497,148 @@
   $('share-btn').onclick = share;
   $('game-share-btn').onclick = share;
 
+  // ---------- Profile, friends & invites ----------
+  let myProfile = null; // { id, name, friendCode, friends, invites }
+
+  async function loadMyProfile() {
+    try { myProfile = (await api('profile_get')).profile; return true; }
+    catch (e) { if (e.code === 'NO_PROFILE') { myProfile = null; return false; } throw e; }
+  }
+
+  function setProfile(p) {
+    myProfile = p;
+    localStorage.setItem(NAME_KEY, p.name);
+    if (!$('home-view').hidden) renderHome();
+  }
+
+  $('setup-btn').onclick = () => {
+    const name = $('name-input').value.trim();
+    if (!name) { $('setup-error').textContent = 'Please enter a name.'; $('name-input').focus(); return; }
+    busy($('setup-btn'), async () => {
+      try { setProfile((await api('profile_save', { name })).profile); }
+      catch (e) { $('setup-error').textContent = e.message; return; }
+      await afterProfile();
+    });
+  };
+  $('name-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('setup-btn').click(); });
+
+  // Transfer codes carry the profile id and secret: HOLDEM-<base64>
+  const encodeTransfer = p => 'HOLDEM-' + btoa(JSON.stringify({ i: p.id, s: p.secret })).replace(/=+$/, '');
+  function decodeTransfer(code) {
+    try {
+      const raw = String(code).trim().replace(/^HOLDEM-/i, '');
+      const o = JSON.parse(atob(raw + '='.repeat((4 - raw.length % 4) % 4)));
+      if (typeof o.i === 'string' && typeof o.s === 'string') return { id: o.i, secret: o.s };
+    } catch (e) { /* fall through */ }
+    return null;
+  }
+  $('restore-btn').onclick = () => busy($('restore-btn'), async () => {
+    const key = decodeTransfer($('restore-input').value);
+    if (!key) { $('setup-error').textContent = "That transfer code isn't valid."; return; }
+    const old = profile;
+    profile = key;
+    try {
+      if (!(await loadMyProfile())) throw new Error('No profile found for that code.');
+      store(PROFILE_KEY, profile);
+      setProfile(myProfile);
+      $('restore-input').value = '';
+      await afterProfile();
+    } catch (e) {
+      profile = old;
+      $('setup-error').textContent = e.message;
+    }
+  });
+
+  $('profile-btn').onclick = () => {
+    show('profile-view');
+    $('rename-input').value = myProfile.name;
+    $('profile-code').textContent = myProfile.friendCode;
+    $('transfer-output').hidden = true;
+    $('profile-error').textContent = '';
+  };
+  $('profile-back-btn').onclick = () => show('home-view');
+  $('rename-btn').onclick = () => busy($('rename-btn'), async () => {
+    try { setProfile((await api('profile_save', { name: $('rename-input').value })).profile); $('profile-error').textContent = 'Name saved.'; }
+    catch (e) { $('profile-error').textContent = e.message; }
+  });
+  $('transfer-btn').onclick = () => {
+    $('transfer-output').value = encodeTransfer(profile);
+    $('transfer-output').hidden = false;
+    $('transfer-output').select();
+  };
+  $('delete-btn').onclick = async () => {
+    if (!confirm('Delete your profile? Your friends list goes, and your name is removed from league tables. This cannot be undone.')) return;
+    $('delete-btn').disabled = true;
+    try {
+      if (session) { try { await api('leave'); } catch (e) { /* ignore */ } }
+      await api('profile_delete');
+    } catch (e) {
+      $('profile-error').textContent = e.message;
+      $('delete-btn').disabled = false;
+      return;
+    }
+    disconnectLive();
+    for (const k of [SESSION_KEY, NAME_KEY, STATS_KEY, PROFILE_KEY, LEAGUES_KEY]) localStorage.removeItem(k);
+    location.replace(location.pathname + '?deleted=1');
+  };
+
+  $('friend-add-btn').onclick = () => busy($('friend-add-btn'), async () => {
+    setProfile((await api('friend_add', { friendCode: $('friend-code-input').value })).profile);
+    $('friend-code-input').value = '';
+    $('home-error').textContent = '';
+  });
+  $('friend-code-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('friend-add-btn').click(); });
+  $('friend-share-btn').onclick = async () => {
+    const link = `${location.origin}${location.pathname}?friend=${myProfile.friendCode}`;
+    try {
+      if (navigator.share) { await navigator.share({ title: "Texas Hold'em", text: `Add me as a friend in Texas Hold'em! My friend code is ${myProfile.friendCode}`, url: link }); return; }
+      await navigator.clipboard.writeText(link);
+      $('friend-share-note').textContent = 'Link copied!';
+    } catch (e) { if (!e || e.name !== 'AbortError') $('friend-share-note').textContent = link; }
+  };
+
+  // Buttons inside the friends and invites lists
+  $('home-view').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.unfriend) {
+      const f = myProfile.friends.find(x => x.id === b.dataset.unfriend);
+      if (f && confirm(`Remove ${f.name} from your friends?`)) busy(b, async () => setProfile((await api('friend_remove', { friendId: f.id })).profile));
+    } else if (b.dataset.dismiss) {
+      busy(b, async () => setProfile((await api('invite_dismiss', { room: b.dataset.dismiss })).profile));
+    } else if (b.dataset.join) {
+      const code = b.dataset.join;
+      leaveOld();
+      busy(b, async () => {
+        startSession(await api('join', { code, name: myProfile.name }));
+        api('invite_dismiss', { room: code }).then(r => { myProfile = r.profile; }).catch(() => {});
+      });
+    }
+  });
+
+  // Invite friends to the table you're at
+  function openInvites() {
+    $('invite-list').innerHTML = myProfile && myProfile.friends.length
+      ? myProfile.friends.map(f => `<li class="item"><span>${esc(f.name)}</span><button class="primary" data-invite="${f.id}">Invite</button></li>`).join('')
+      : '<li>No friends yet. Add friends from the start screen, or share the table link.</li>';
+    $('invite-overlay').hidden = false;
+  }
+  for (const b of document.querySelectorAll('.invite-friends-btn')) b.onclick = openInvites;
+  $('invite-close-btn').onclick = () => { $('invite-overlay').hidden = true; };
+  $('invite-list').addEventListener('click', e => {
+    const b = e.target.closest('button[data-invite]');
+    if (!b || !session) return;
+    b.disabled = true;
+    api('invite', { friendId: b.dataset.invite, room: session.code })
+      .then(() => { b.textContent = 'Invited ✓'; })
+      .catch(err => { b.textContent = 'Try again'; b.disabled = false; alert(err.message); });
+  });
+
+  // Check for new invites while on the start screen.
+  setInterval(() => {
+    if (myProfile && !$('home-view').hidden && !document.hidden) loadMyProfile().then(() => renderHome()).catch(() => {});
+  }, 20000);
+
   // ---------- Leagues ----------
   let league = null; // league currently shown
 
@@ -509,6 +649,17 @@
   }
 
   function renderHome() {
+    if (myProfile) {
+      $('me-name').textContent = myProfile.name;
+      $('me-code').textContent = myProfile.friendCode;
+      $('invites-panel').hidden = !myProfile.invites.length;
+      $('invites-list').innerHTML = myProfile.invites.map(i =>
+        `<li class="item"><span><b>${esc(i.fromName)}</b> invited you to a ${i.mode === 'tournament' ? 'tournament' : 'cash game'}</span>` +
+        `<span><button class="primary" data-join="${i.room}">Join</button> <button class="secondary" data-dismiss="${i.room}">✕</button></span></li>`).join('');
+      $('friends-list').innerHTML = myProfile.friends.length
+        ? myProfile.friends.map(f => `<li class="item"><span>${esc(f.name)}</span><button class="secondary" data-unfriend="${f.id}" title="Remove friend">Remove</button></li>`).join('')
+        : '<li>No friends yet. Share your friend link, or add a friend\'s code.</li>';
+    }
     $('my-leagues').innerHTML = myLeagues.length
       ? myLeagues.map(l => `<li class="league-item" data-code="${l.code}"><span>${esc(l.name)}</span><a>View table ›</a></li>`).join('')
       : '<li>No leagues yet.</li>';
@@ -551,8 +702,8 @@
   }
 
   async function leagueGame(mode) {
-    const name = $('name-input').value.trim() || localStorage.getItem(NAME_KEY);
-    if (!name) { show('home-view'); $('home-error').textContent = 'Please enter your name first.'; $('name-input').focus(); return; }
+    const name = nameValue();
+    if (!name) return;
     leaveOld();
     try { startSession(await api('create', { name, mode, speed: 'normal', league: league.code })); }
     catch (e) { $('league-error').textContent = e.message; }
@@ -561,24 +712,21 @@
   $('league-cash-btn').onclick = () => leagueGame('cash');
   $('league-back-btn').onclick = () => { history.replaceState(null, '', location.pathname); show('home-view'); };
   $('league-join-here-btn').onclick = async () => {
-    const name = $('name-input').value.trim() || localStorage.getItem(NAME_KEY) || prompt('Your name for the league table:');
-    if (!name) return;
-    localStorage.setItem(NAME_KEY, name);
-    $('name-input').value = name;
-    try { showLeague((await api('league_join', { code: league.code, name })).league); }
+    if (!nameValue()) return;
+    try { showLeague((await api('league_join', { code: league.code })).league); }
     catch (e) { $('league-error').textContent = e.message; }
   };
   $('league-create-btn').onclick = () => {
     const name = nameValue(); if (!name) return;
     const leagueName = $('league-name-input').value.trim();
     if (!leagueName) { $('home-error').textContent = 'Give your league a name.'; $('league-name-input').focus(); return; }
-    busy($('league-create-btn'), async () => { showLeague((await api('league_create', { leagueName, name })).league); $('league-name-input').value = ''; });
+    busy($('league-create-btn'), async () => { showLeague((await api('league_create', { leagueName })).league); $('league-name-input').value = ''; });
   };
   $('league-join-btn').onclick = () => {
     const name = nameValue(); if (!name) return;
     const code = $('league-code-input').value.trim().toUpperCase();
     if (code.length !== 6) { $('home-error').textContent = 'League codes are 6 letters.'; return; }
-    busy($('league-join-btn'), async () => { showLeague((await api('league_join', { code, name })).league); $('league-code-input').value = ''; });
+    busy($('league-join-btn'), async () => { showLeague((await api('league_join', { code })).league); $('league-code-input').value = ''; });
   };
   $('league-share-btn').onclick = async () => {
     const link = `${location.origin}${location.pathname}?league=${league.code}`;
@@ -593,11 +741,37 @@
 
   // ---------- Start up ----------
   renderStats();
-  $('name-input').value = localStorage.getItem(NAME_KEY) || '';
   const roomParam = (new URLSearchParams(location.search).get('room') || '').toUpperCase().replace(/[^A-Z]/g, '');
   const leagueParam = (new URLSearchParams(location.search).get('league') || '').toUpperCase().replace(/[^A-Z]/g, '');
+  const friendParam = (new URLSearchParams(location.search).get('friend') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const deletedParam = new URLSearchParams(location.search).has('deleted');
+
+  // After the profile exists (or was just created / restored), carry on to where the link pointed.
+  async function afterProfile() {
+    if (friendParam && myProfile && friendParam !== myProfile.friendCode && !myProfile.friends.some(f => f.friendCode === friendParam)) {
+      show('home-view');
+      $('friend-code-input').value = friendParam;
+      $('home-error').textContent = 'Tap Add to add this friend.';
+      history.replaceState(null, '', location.pathname);
+      return;
+    }
+    return route();
+  }
 
   (async function init() {
+    try { await loadMyProfile(); }
+    catch (e) { show('setup-view'); $('setup-error').textContent = e.message; return; }
+    if (!myProfile) {
+      show('setup-view');
+      $('name-input').value = localStorage.getItem(NAME_KEY) || '';
+      if (deletedParam) $('setup-error').textContent = 'Your profile has been deleted.';
+      return;
+    }
+    localStorage.setItem(NAME_KEY, myProfile.name);
+    return afterProfile();
+  })();
+
+  async function route() {
     if (session && !leagueParam && (!roomParam || roomParam === session.code)) {
       // Coming back to a table we're already at.
       try {
@@ -616,8 +790,8 @@
     show('home-view');
     if (roomParam) {
       $('code-input').value = roomParam;
-      $('home-error').textContent = `Enter your name and press Join to sit at table ${roomParam}.`;
-      ($('name-input').value ? $('join-btn') : $('name-input')).focus();
+      $('home-error').textContent = `Press Join to sit at table ${roomParam}.`;
+      $('join-btn').focus();
     }
-  })();
+  }
 })();

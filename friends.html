@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Texas Hold'em: With Friends</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://lcekdvxhuimoxpiadism.supabase.co wss://lcekdvxhuimoxpiadism.supabase.co; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="theme-color" content="#1b1b1b">
   <meta name="description" content="Simple Texas Hold'em against the computer or with friends, with win/loss stats.">
   <link rel="manifest" href="manifest.webmanifest">
@@ -28,11 +29,63 @@
     <div><span id="stat-pct">0.0%</span><small>Win %</small></div>
   </div>
 
+  <!-- First visit: create a profile -->
+  <section id="setup-view" hidden>
+    <div class="panel">
+      <h2>Welcome! Choose your player name</h2>
+      <p>This is how friends see you at tables and in leagues. No email or password needed.</p>
+      <input type="text" id="name-input" maxlength="16" placeholder="e.g. Sam" autocomplete="nickname">
+      <button class="primary" id="setup-btn" style="width:100%;margin-top:10px">Create my profile</button>
+      <p class="hint">By creating a profile you agree to the <a href="privacy.html">privacy policy</a>.</p>
+    </div>
+    <div class="panel">
+      <h2>Already have a profile on another phone?</h2>
+      <p>On your old phone, open <b>Profile &amp; privacy</b> and tap <b>Move to another phone</b>.</p>
+      <div class="row">
+        <input type="text" id="restore-input" placeholder="Transfer code" autocomplete="off">
+        <button class="secondary" id="restore-btn">Use code</button>
+      </div>
+    </div>
+    <div class="error" id="setup-error"></div>
+  </section>
+
+  <!-- Profile & privacy -->
+  <section id="profile-view" hidden>
+    <div class="panel">
+      <h2>Your profile</h2>
+      <div class="row">
+        <input type="text" id="rename-input" maxlength="16" autocomplete="nickname">
+        <button class="primary" id="rename-btn">Save name</button>
+      </div>
+      <p>Your friend code: <b class="friend-code" id="profile-code"></b></p>
+    </div>
+    <div class="panel">
+      <h2>Move to another phone</h2>
+      <p>Your profile lives on this phone. To use it on a new phone, show the transfer code and enter it there.
+        <b>Keep it private:</b> anyone with it can use your profile.</p>
+      <button class="secondary" id="transfer-btn">Show transfer code</button>
+      <input type="text" id="transfer-output" readonly hidden style="margin-top:8px">
+    </div>
+    <div class="panel danger">
+      <h2>Delete my profile</h2>
+      <p>Deletes your profile and friends list from our server, removes your name from league tables
+        (results show as "Deleted player") and clears this app's data on this phone. This can't be undone.</p>
+      <button class="danger-btn" id="delete-btn">Delete my profile</button>
+    </div>
+    <p class="hint" style="text-align:center"><a href="privacy.html">Privacy policy</a> · <a href="delete-data.html">Deleting your data</a></p>
+    <div class="error" id="profile-error"></div>
+    <div class="footer"><button class="secondary" id="profile-back-btn">Back</button></div>
+  </section>
+
   <!-- Create or join a room -->
   <section id="home-view" hidden>
-    <div class="panel">
-      <h2>Your name</h2>
-      <input type="text" id="name-input" maxlength="16" placeholder="e.g. Sam" autocomplete="nickname">
+    <div class="panel profile-bar">
+      <div>Playing as <b id="me-name"></b><br><small>Friend code <b class="friend-code" id="me-code"></b></small></div>
+      <button class="secondary" id="profile-btn">Profile &amp; privacy</button>
+    </div>
+    <div class="panel invites" id="invites-panel" hidden>
+      <h2>Invites</h2>
+      <ul class="lobby-list" id="invites-list"></ul>
     </div>
     <div class="panel">
       <h2>Start a new table</h2>
@@ -56,6 +109,16 @@
         <input type="text" class="code" id="code-input" maxlength="4" placeholder="CODE" autocomplete="off">
         <button class="primary" id="join-btn">Join</button>
       </div>
+    </div>
+    <div class="panel">
+      <h2>Friends</h2>
+      <ul class="lobby-list" id="friends-list"></ul>
+      <div class="row">
+        <input type="text" class="code" id="friend-code-input" maxlength="8" placeholder="FRIEND CODE" autocomplete="off">
+        <button class="primary" id="friend-add-btn">Add</button>
+      </div>
+      <button class="secondary" id="friend-share-btn" style="width:100%">Share my friend link</button>
+      <p id="friend-share-note" class="hint"></p>
     </div>
     <div class="panel">
       <h2>Leagues</h2>
@@ -112,7 +175,10 @@
       <p>Room code</p>
       <div class="room-code" id="lobby-code"></div>
       <p id="lobby-mode"></p>
-      <button class="primary" id="share-btn">Share invite link</button>
+      <div class="row">
+        <button class="primary" id="share-btn">Share invite link</button>
+        <button class="secondary invite-friends-btn">Invite friends</button>
+      </div>
       <p id="share-note" style="min-height:20px"></p>
     </div>
     <div class="panel">
@@ -128,7 +194,7 @@
   <section id="game-view" hidden>
     <div class="room-bar">
       <span>Room <b id="game-code"></b> <small id="game-info"></small></span>
-      <button class="secondary" id="game-share-btn">Invite</button>
+      <span><button class="secondary invite-friends-btn">Friends</button> <button class="secondary" id="game-share-btn">Link</button></span>
     </div>
     <div class="panel final" id="final-panel" hidden>
       <h2 id="final-title"></h2>
@@ -175,6 +241,15 @@
     <div class="footer"><button class="secondary" id="leave-btn">Leave Table</button></div>
   </section>
 
+  <!-- Invite friends to the current table -->
+  <div class="overlay" id="invite-overlay" hidden>
+    <div class="panel">
+      <h2>Invite friends to this table</h2>
+      <ul class="lobby-list" id="invite-list"></ul>
+      <button class="secondary" id="invite-close-btn" style="width:100%">Done</button>
+    </div>
+  </div>
+
   <p class="message" id="loading">Loading&hellip;</p>
   <footer class="colophon" data-release></footer>
 </div>
@@ -184,10 +259,6 @@
 <script src="config.js"></script>
 <script src="vendor/supabase.js"></script>
 <script src="friends.js"></script>
-<script>
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
-  }
-</script>
+<script src="sw-register.js"></script>
 </body>
 </html>
