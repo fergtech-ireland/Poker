@@ -6,6 +6,12 @@ Texas Hold'em by FergTech. The version is shown at the foot of every screen
 To release: bump `version` in `version.js`, add an entry here, and bump `CACHE` in `sw.js`
 so installed copies pick up the update.
 
+## 0.8.0 (3 November 2026)
+- Standard poker-app controls: one action row (Fold | Check/Call | Raise to …), with the chips and quick
+  sizes (Clear, ½ Pot, Pot, All in) above it.
+- Chip values grow with the big blind, so late tournament levels need only a few taps.
+- With friends: pre-actions while you wait (Check/Fold, Check or Call X, Call any).
+
 ## 0.7.2 (3 November 2026)
 - Simpler betting: just Fold and Call buttons, with the chips always shown underneath.
   Tap chips, then "Raise to …". Clear and All in sit next to it.

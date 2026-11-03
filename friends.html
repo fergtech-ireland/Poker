@@ -222,12 +222,18 @@
 
     <div class="message" id="message"></div>
 
+    <div id="bet-panel"></div>
     <div class="controls" id="controls">
       <button id="fold-btn">Fold</button>
       <button id="call-btn">Check</button>
+      <button id="raise-btn">Raise</button>
       <button id="rebuy-btn" hidden>Rebuy 1000</button>
     </div>
-    <div id="bet-panel"></div>
+    <div class="controls pre-actions" id="pre-row" hidden>
+      <button type="button" data-pre="checkfold" aria-pressed="false">Check/Fold</button>
+      <button type="button" data-pre="check" aria-pressed="false">Check</button>
+      <button type="button" data-pre="callany" aria-pressed="false">Call any</button>
+    </div>
 
     <div class="log"><ul id="log"></ul></div>
 

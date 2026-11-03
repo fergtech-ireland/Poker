@@ -34,26 +34,29 @@ try {
   // Between hands the last pot stays on screen after being paid out, so only the stacks count then.
   const total = () => p.evaluate(() => +document.querySelector('#your-chips').textContent + +document.querySelector('#cpu-chips').textContent);
 
-  // First decision: the chip tray is always under Fold / Call
-  await p.waitForFunction(() => !document.querySelector('#bet-panel .bet-confirm').disabled);
-  check(!(await p.$('#raise-btn')), 'only Fold and Call buttons; no separate Raise button');
-  check(await p.isVisible('#bet-panel .chip-row'), 'chips are shown under the buttons');
+  // First decision: chips and quick sizes above one action row (Fold | Call | Raise)
+  await p.waitForFunction(() => !document.querySelector('#raise-btn').disabled);
+  const row = await p.$$eval('.controls button:not([hidden])', bs => bs.map(b => b.id));
+  check(row.join(',') === 'fold-btn,call-btn,raise-btn', `one action row: ${row.join(' | ')}`);
   const chips = await p.$$eval('#bet-panel [data-chip]', bs => bs.map(b => +b.dataset.chip));
-  check(chips.join(',') === '5,25,100,500,1000', `chips: ${chips.join(', ')}`);
-  check((await p.textContent('#bet-panel .bet-confirm')) === 'Raise to 40', 'starts at the minimum raise: "Raise to 40"');
+  check(chips.join(',') === '5,25,100,500,1000', `chips at blinds 10/20: ${chips.join(', ')}`);
+  check((await p.textContent('#raise-btn')) === 'Raise to 40', 'Raise button starts at the minimum: "Raise to 40"');
   await p.click('#bet-panel [data-chip="25"]');
   await p.click('#bet-panel [data-chip="25"]');
   await p.click('#bet-panel [data-chip="100"]');
-  check((await p.textContent('#bet-panel .bet-confirm')) === 'Raise to 190', 'tapping 25 + 25 + 100 chips: "Raise to 190"');
+  check((await p.textContent('#raise-btn')) === 'Raise to 190', 'chips 25 + 25 + 100: "Raise to 190"');
   check(await p.isDisabled('#bet-panel [data-chip="1000"]'), 'a chip that would go past your stack is greyed out');
+  await p.click('#bet-panel .bet-pot');
+  check((await p.textContent('#raise-btn')) === 'Raise to 60', 'Pot: call 10, then raise by the 40 pot: "Raise to 60"');
   await p.click('#bet-panel .bet-allin');
-  check((await p.textContent('#bet-panel .bet-confirm')) === 'All in 1,000', 'All in sets "All in 1,000" (990 left plus the 10 already bet)');
+  check((await p.textContent('#raise-btn')) === 'All in 1,000', 'All in: "All in 1,000"');
   await p.click('#bet-panel .bet-clear');
-  check((await p.textContent('#bet-panel .bet-confirm')) === 'Raise to 40', 'Clear goes back to the minimum');
+  check((await p.textContent('#raise-btn')) === 'Raise to 40', 'Clear goes back to the minimum');
+  check(await p.isDisabled('#bet-panel .bet-half'), '½ Pot equals the minimum (40) here, so it is greyed out');
   await p.click('#bet-panel [data-chip="5"]');
   await p.click('#bet-panel [data-chip="25"]');
   if (SHOT) await p.screenshot({ path: SHOT });
-  await p.click('#bet-panel .bet-confirm');
+  await p.click('#raise-btn');
   await p.waitForFunction(() => /raise to 70/.test(document.querySelector('#log').textContent));
   check(true, 'tapping "Raise to 70" makes the raise');
   check(await p.isDisabled('#bet-panel [data-chip="5"]'), "the chips are dimmed while it's the computer's turn");
@@ -70,16 +73,17 @@ try {
     }
     if (!(await p.isEnabled('#call-btn'))) { await p.waitForTimeout(150); continue; }
     const r = Math.random();
-    if (r < 0.35 && await p.isEnabled('#bet-panel .bet-confirm')) {
+    if (r < 0.35 && await p.isEnabled('#raise-btn')) {
       if (r < 0.05 && await p.isEnabled('#bet-panel .bet-allin')) { await p.click('#bet-panel .bet-allin'); allIns++; }
       else {
-        // tap up to three random chips that still fit
+        // tap up to three random chips that still fit, or sometimes a pot size
+        if (r < 0.1) await p.click(r < 0.075 ? '#bet-panel .bet-pot' : '#bet-panel .bet-half', { timeout: 1000 }).catch(() => {});
         for (let k = Math.floor(Math.random() * 4); k > 0; k--) {
           const open = await p.$$('#bet-panel [data-chip]:not([disabled])');
           if (open.length) await open[Math.floor(Math.random() * open.length)].click();
         }
       }
-      await p.click('#bet-panel .bet-confirm');
+      await p.click('#raise-btn');
       raises++;
     } else if (r > 0.9 && await p.isEnabled('#fold-btn')) await p.click('#fold-btn');
     else await p.click('#call-btn');

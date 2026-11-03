@@ -4,7 +4,7 @@
 (function (root) {
   const RELEASE = {
     name: "Texas Hold'em",
-    version: '0.7.2',
+    version: '0.8.0',
     company: 'FergTech',
     buildSha: '',   // set by the deploy workflow
     buildDate: '',  // set by the deploy workflow, YYYY-MM-DD

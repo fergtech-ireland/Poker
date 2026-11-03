@@ -51,9 +51,12 @@ A league is a private group with its own **league table** covering all your game
 
 - Each player starts with 1000 chips. Blinds are 10/20, and the dealer button switches every hand.
 - Betting is **no-limit**: bet or raise any amount from the minimum up to everything you have.
-  Under **Fold** and **Call** there's always a row of chips: red **5**, green **25**, black **100**, purple **500**,
-  yellow **1,000**. The raise starts at the minimum and each tap on a chip adds it; then tap **Raise to …** (or **Bet …**).
-  **Clear** goes back to the minimum and **All in** bets everything. The chips are dimmed when it isn't your turn.
+  The controls follow the usual poker-app layout: one action row, **Fold | Check/Call | Raise to …**, always in the same place.
+  Above it, a row of chips and the quick sizes **Clear**, **½ Pot**, **Pot** and **All in**. The raise starts at the minimum and
+  each tap on a chip adds it. Chip values grow with the big blind: 5 / 25 / 100 / 500 / 1,000 at 10/20 blinds, up to
+  500 / 2,500 / 10,000 / 50,000 / 100,000 at 1,000/2,000.
+- With friends, while you wait for your turn you can pick **Check/Fold**, **Check** (or **Call X**) or **Call any**, and it's
+  played for you when your turn comes. Check / Call X cancels itself if someone bets more first.
   The smallest bet is the big blind; a raise must be at least as big as the last bet or raise. You can always go all in.
 - Use **Fold**, **Check/Call** and **Bet/Raise** to act, then **Next Hand** to continue.
 - Under your cards, **Win chance** shows your chance of winning the hand after each deal (pre-flop, flop, turn, river). The computer's cards are hidden, so it's worked out against every hand it could hold; ties count as half a win. The log records it too.
@@ -103,6 +106,7 @@ Every screen ends with the FergTech footer, the same release line as other FergT
 
 ## Tests
 
+- `node tests/betting.test.mjs`: chip values at every blind level.
 - `node tests/release.test.mjs`: the version/copyright line and the deploy stamping.
 - `NODE_PATH=$(npm root -g) node tests/solo.e2e.mjs`: the vs-Computer game in a phone browser, including the bet panel and all-ins.
 - `node tests/engine.test.mjs`: game rules, side pots, tournaments, leagues, and thousands of random hands.

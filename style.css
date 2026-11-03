@@ -70,12 +70,15 @@ button:disabled { opacity: .4; cursor: default; }
 .chip-yellow { background: #f2c230; color: #222; }
 .chip-yellow span { text-shadow: none; border-color: rgba(0,0,0,.25); }
 .chip-yellow::before { border-color: rgba(120,80,0,.6); }
-.bet-actions { display: flex; gap: 8px; }
-.bet-actions button { padding: 14px 6px; font-size: 16px; }
-.bet-actions .bet-clear { flex: 1; }
-.bet-actions .bet-allin { flex: 1; background: #8b1a1a; color: #fff; }
-.bet-actions .bet-confirm { flex: 2; background: #f0ad4e; color: #111; font-weight: bold; }
-.bet-panel.off .bet-actions button:disabled { opacity: 1; }
+.bet-quick { display: flex; gap: 6px; margin-bottom: 10px; }
+.bet-quick button { flex: 1; padding: 10px 4px; font-size: 14px; }
+.bet-quick .bet-allin { background: #8b1a1a; color: #fff; }
+.bet-panel.off .bet-quick button:disabled { opacity: 1; }
+#raise-btn { font-weight: bold; }
+/* Pre-actions while waiting for your turn (friends games) */
+.pre-actions button { background: #333; color: #ddd; border: 2px solid #555; }
+.pre-actions button[aria-pressed="true"] { background: #1f4d2b; border-color: #5cb85c; color: #fff; }
+.pre-actions button[aria-pressed="true"]::before { content: "✓ "; }
 @media (prefers-reduced-motion: reduce) { .chip, .bet-panel { transition: none; } }
 
 /* Page switcher */

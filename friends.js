@@ -274,11 +274,15 @@
 
     $('call-btn').textContent = !opt || opt.toCall === 0 ? 'Check'
       : opt.callAmount === mine.chips ? `All in ${opt.callAmount}` : `Call ${opt.callAmount}`;
-    betPanel.update(opt && opt.canRaise ? opt : null);
+    betPanel.update(opt && opt.canRaise ? { ...opt, bb: state.blinds.bb } : null);
     const canRebuy = !tourney && mine.chips === 0 && !(h && !h.over && mine.inHand && !mine.folded);
+    // Waiting for your turn in a hand: show the pre-action choices instead of Fold / Call / Raise.
+    const waiting = !!(h && !h.over && mine.inHand && !mine.folded && mine.chips > 0 && !opt && !acting);
+    renderPre(waiting, h, opt);
     $('rebuy-btn').hidden = !canRebuy;
-    for (const id of ['fold-btn', 'call-btn', 'bet-panel']) $(id).hidden = canRebuy;
+    for (const id of ['fold-btn', 'call-btn', 'raise-btn']) $(id).hidden = canRebuy || waiting;
     $('controls').hidden = finished || (tourney && (mine.place || mine.watching));
+    $('pre-row').hidden = !waiting || $('controls').hidden;
     $('bet-panel').hidden = $('controls').hidden || canRebuy;
     renderFinal(finished);
 
@@ -334,6 +338,47 @@
       : `Waiting for ${(playerById(state.hostId) || {}).name || 'the host'} to start another tournament…`;
     if (state.league) $('final-note').textContent += ` Points have been added to the ${state.league.name} league table.`;
   }
+
+  // ---------- Pre-actions: choose your move before your turn ----------
+  let pre = null; // { kind: 'checkfold' | 'check' | 'callany', amount, hand, street }
+
+  // What you'd need to call right now, from the public table.
+  function toCallNow() {
+    const mine = playerById(me.id);
+    const top = Math.max(0, ...state.players.map(p => p.bet || 0));
+    return Math.min(Math.max(0, top - (mine.bet || 0)), mine.chips);
+  }
+
+  function renderPre(waiting, h, opt) {
+    // A choice only lasts for the betting round it was made in.
+    if (pre && (!h || h.over || pre.hand !== h.no || pre.street !== h.street)) pre = null;
+    if (opt && pre) {
+      // Your turn: play the chosen move (Check / Call X is cancelled if the bet changed).
+      const p = pre;
+      pre = null;
+      const m = p.kind === 'checkfold' ? (opt.toCall === 0 ? 'call' : 'fold')
+        : p.kind === 'callany' ? 'call'
+        : opt.toCall === p.amount ? 'call' : null;
+      if (m) setTimeout(() => move(m), 0);
+      return;
+    }
+    if (!waiting) return;
+    const toCall = toCallNow();
+    if (pre && pre.kind === 'check' && pre.amount !== toCall) pre = null; // someone bet: cancel
+    for (const b of $('pre-row').querySelectorAll('[data-pre]')) {
+      b.setAttribute('aria-pressed', String(!!pre && pre.kind === b.dataset.pre));
+      if (b.dataset.pre === 'check') b.textContent = toCall ? `Call ${toCall}` : 'Check';
+      if (b.dataset.pre === 'checkfold') b.textContent = toCall ? 'Fold' : 'Check/Fold';
+    }
+  }
+
+  $('pre-row').addEventListener('click', e => {
+    const b = e.target.closest('[data-pre]');
+    if (!b || !state || !state.hand) return;
+    const kind = b.dataset.pre;
+    pre = pre && pre.kind === kind ? null : { kind, amount: toCallNow(), hand: state.hand.no, street: state.hand.street };
+    render();
+  });
 
   function summary(r) {
     if (!r) return '';
@@ -473,7 +518,7 @@
   $('fold-btn').onclick = () => move('fold');
   $('call-btn').onclick = () => move('call');
   // The chip tray under the buttons: tap chips, then the Bet / Raise to button.
-  const betPanel = BetPanel.create($('bet-panel'), amount => {
+  const betPanel = BetPanel.create($('bet-panel'), $('raise-btn'), amount => {
     const opt = me && me.options;
     move(opt && amount === opt.max ? 'allin' : 'raise', amount);
   });
