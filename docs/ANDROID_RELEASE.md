@@ -46,8 +46,7 @@ Step-by-step instructions for every 🙋 item below are in **[PLAY_STORE_LISTING
       Untested until the domain and signing secrets exist; the first run may need a small fix.
 - [x] ✅ Website address chosen: **poker.fergtech.ie**. Site files (`CNAME`, `.well-known/`) and the
       server's allowed origins are ready.
-- [ ] 🙋 DNS: CNAME `poker` → `fergtech-ireland.github.io`, then GitHub → Settings → Pages → Custom domain
-      `poker.fergtech.ie` → Enforce HTTPS
+- [ ] 🙋 Host on Cloudflare Pages (repo is private) with custom domain `poker.fergtech.ie`; see step 1 of PLAY_STORE_LISTING.md
 - [ ] 🙋 Create the upload signing key and add the 3 GitHub secrets
 - [ ] 🤖 Run the build, then publish `assetlinks.json` with the key fingerprints
 

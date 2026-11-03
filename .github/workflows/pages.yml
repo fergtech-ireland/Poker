@@ -1,8 +1,9 @@
 name: Deploy to GitHub Pages
 
+# The repo is private, and GitHub Pages needs a paid plan for private repos, so the site is hosted on
+# Cloudflare Pages instead (see docs/PLAY_STORE_LISTING.md, step 1). This workflow is kept for running
+# by hand if the repo goes public again or the account moves to GitHub Pro.
 on:
-  push:
-    branches: [claude/texas-holdem-poker-game-hwf4kq]
   workflow_dispatch:
 
 permissions:
@@ -23,16 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      - name: Collect site files
-        run: |
-          mkdir _site
-          cp -r index.html friends.html privacy.html delete-data.html sw-register.js betting.js version.js poker.js game.js friends.js config.js style.css sw.js manifest.webmanifest icons vendor CNAME .well-known _site/
-          # Stamp the build commit and date into the release line
-          sed -i "s/buildSha: ''/buildSha: '${GITHUB_SHA::7}'/; s/buildDate: ''/buildDate: '$(date -u +%F)'/" _site/version.js
-          grep -q "buildSha: '${GITHUB_SHA::7}'" _site/version.js
-          # Android app verification file and custom domain must be published
-          test -f _site/.well-known/assetlinks.json
-          test -f _site/CNAME
+      - name: Build site
+        run: bash tools/build-site.sh
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

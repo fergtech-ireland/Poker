@@ -4,7 +4,7 @@ A simple Texas Hold'em game. Play heads-up against the computer, or at a table w
 
 ## Play it
 
-**https://poker.fergtech.ie** (until the domain is live: https://fergtech-ireland.github.io/Poker/)
+**https://poker.fergtech.ie** (hosted on Cloudflare Pages; build with `bash tools/build-site.sh`)
 
 You can also open `index.html` directly in any browser.
 
@@ -117,7 +117,8 @@ Every screen ends with the FergTech footer, the same release line as other FergT
 - `style.css`: styles shared by both pages
 - `vendor/supabase.js`: Supabase browser library (v2.118.0, MIT), stored here so the app doesn't depend on a CDN
 - `manifest.webmanifest`, `sw.js`, `icons/`: what lets the game be installed on a phone and work offline
-- `.github/workflows/pages.yml`: publishes the game to GitHub Pages on every push
+- `tools/build-site.sh`: builds the website into `_site/` (Cloudflare Pages runs it on every push)
+- `.github/workflows/pages.yml`: GitHub Pages deploy, manual only while the repo is private
 
 When you change any game file, bump `CACHE` in `sw.js` (e.g. `holdem-v2`) so installed copies pick up the update.
 

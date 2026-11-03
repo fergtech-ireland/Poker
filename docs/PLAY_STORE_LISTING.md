@@ -4,24 +4,26 @@ App: **Texas Hold'em** by FergTech · package `ie.fergtech.holdem` · site `http
 
 ---
 
-## Step 1. Point poker.fergtech.ie at the game (you)
+## Step 1. Host the site on Cloudflare Pages at poker.fergtech.ie (you)
 
-1. **DNS**: wherever `fergtech.ie` is managed (your domain registrar or DNS host), add:
+The repo is private, and GitHub Pages only serves private repos on paid plans, so the site goes on
+**Cloudflare Pages** (free, works with private repos, rebuilds on every push).
 
-   | Type  | Name / Host | Value                         |
-   |-------|-------------|-------------------------------|
-   | CNAME | `poker`     | `fergtech-ireland.github.io`  |
-
-2. **GitHub**: go to github.com/fergtech-ireland/Poker → **Settings → Pages → Custom domain**, enter
-   `poker.fergtech.ie`, then **Save**. Wait for the DNS check to go green (minutes to a few hours), then tick
-   **Enforce HTTPS**.
-3. Recommended, to stop anyone else claiming the domain on GitHub: **your GitHub profile → Settings →
-   Pages → Add a domain** → `fergtech.ie`, then add the TXT record GitHub shows you.
-4. Open https://poker.fergtech.ie: the game should load. The old github.io link redirects there.
-
-> Players' saved data is tied to the web address. Profiles made on the old github.io address won't
-> appear on the new one. Anyone who needs to keep theirs can use **Profile & privacy → Move to another
-> phone** before the switch, and enter the code on the new address.
+1. Sign in at **dash.cloudflare.com** (a free account is fine) → **Workers & Pages** → **Create** →
+   **Pages** → **Connect to Git**.
+2. Connect GitHub and allow access to **fergtech-ireland/Poker** only.
+3. Settings:
+   - Production branch: `claude/texas-holdem-poker-game-hwf4kq` (or `main` once it's merged)
+   - Framework preset: **None**
+   - Build command: `bash tools/build-site.sh`
+   - Build output directory: `_site`
+4. **Save and Deploy.** You get an address like `holdem.pages.dev` for checking the vs Computer game.
+5. Project → **Custom domains** → **Set up a custom domain** → `poker.fergtech.ie`.
+   - If `fergtech.ie`'s DNS is on Cloudflare, it's added automatically.
+   - Otherwise, add at your DNS provider: CNAME `poker` → the `*.pages.dev` address from step 4.
+6. Open https://poker.fergtech.ie. Both modes should work there. The server only accepts friends games from
+   `poker.fergtech.ie`, so **With Friends won't work on the `*.pages.dev` address**. Tell Claude the
+   address if you want it allowed too.
 
 ## Step 2. Create the upload signing key (you, once)
 
