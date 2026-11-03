@@ -49,21 +49,40 @@ button:disabled { opacity: .4; cursor: default; }
 .colophon p { margin: 0; }
 .colophon .build { opacity: .8; }
 
-/* Bet / raise chooser */
+/* Bet / raise chooser: poker chips */
 .bet-panel { background: #2c2c2c; border: 2px solid #f0ad4e; border-radius: 10px; padding: 12px; margin-top: 10px; }
 .bet-panel[hidden] { display: none; }
-.bet-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; font-weight: bold; }
-.bet-input { width: 120px; font-size: 20px; padding: 8px; border-radius: 6px; border: 1px solid #555; background: #1b1b1b; color: #ffd700; text-align: right;
-             -webkit-user-select: text; user-select: text; }
-.bet-range { width: 100%; accent-color: #f0ad4e; height: 28px; }
+.bet-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: bold; }
+.bet-input { width: 130px; font-size: 22px; padding: 6px 8px; border-radius: 6px; border: 1px solid #555; background: #1b1b1b; color: #ffd700; text-align: right;
+             font-variant-numeric: tabular-nums; -webkit-user-select: text; user-select: text; }
+.bet-stack { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; min-height: 22px; margin: 8px 0 4px; color: #aaa; font-size: 13px; }
+.bet-stack span { margin-left: 4px; }
+.chip-row { display: flex; justify-content: space-between; gap: 6px; margin: 8px 0; }
+.chip { flex: 1; max-width: 64px; aspect-ratio: 1; border-radius: 50%; padding: 0; position: relative; color: #fff;
+        font-weight: 800; font-size: 15px; box-shadow: 0 3px 0 rgba(0,0,0,.45), 0 4px 8px rgba(0,0,0,.35); transition: transform .08s; }
+/* the white edge stripes of a casino chip */
+.chip::before { content: ""; position: absolute; inset: 3px; border-radius: 50%; border: 4px dashed rgba(255,255,255,.9); }
+.chip span { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 58%; aspect-ratio: 1;
+             border-radius: 50%; background: inherit; border: 2px solid rgba(255,255,255,.55); text-shadow: 0 1px 1px rgba(0,0,0,.5); }
+.chip:active, .chip.pop { transform: translateY(2px) scale(.95); }
+.chip:disabled { opacity: .3; }
+.chip-red { background: #c62828; }
+.chip-green { background: #2e7d32; }
+.chip-black { background: #1d1d1d; }
+.chip-black::before { border-color: rgba(255,255,255,.75); }
+.chip-purple { background: #6a1b9a; }
+.chip-yellow { background: #f2c230; color: #222; }
+.chip-yellow span { text-shadow: none; border-color: rgba(0,0,0,.25); }
+.chip-yellow::before { border-color: rgba(120,80,0,.6); }
+.bet-stack .mini { width: 14px; height: 14px; border-radius: 50%; display: inline-block; border: 2px dashed rgba(255,255,255,.8); }
 .bet-presets { display: flex; gap: 6px; margin: 8px 0; }
 .bet-presets button { flex: 1; padding: 10px 4px; font-size: 14px; }
-.bet-presets button.active { outline: 2px solid #ffd700; }
 .bet-presets button.allin { background: #8b1a1a; color: #fff; }
 .bet-actions { display: flex; gap: 8px; }
 .bet-actions button { flex: 1; padding: 12px 4px; }
 .bet-actions .bet-confirm { flex: 2; background: #f0ad4e; color: #111; font-weight: bold; }
 .bet-hint { color: #ff9a9a; font-size: 13px; min-height: 16px; margin-top: 6px; text-align: center; }
+@media (prefers-reduced-motion: reduce) { .chip { transition: none; } }
 
 /* Page switcher */
 .nav { display: flex; gap: 6px; margin-bottom: 12px; background: #2c2c2c; border-radius: 8px; padding: 4px; }

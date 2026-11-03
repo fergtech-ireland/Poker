@@ -6,6 +6,10 @@ Texas Hold'em by FergTech. The version is shown at the foot of every screen
 To release: bump `version` in `version.js`, add an entry here, and bump `CACHE` in `sw.js`
 so installed copies pick up the update.
 
+## 0.7.1 (3 November 2026)
+- Raising uses poker chips: each tap adds a 5, 25, 100, 500 or 1,000 chip to the minimum raise.
+  Undo, Reset and All in buttons; chips that would go past your stack are greyed out.
+
 ## 0.7.0 (3 November 2026)
 - No-limit betting in both modes: bet or raise any amount, or go all in. Tap Raise for the bet panel
   with a slider, an amount box and quick picks (Min, ½ Pot, Pot, All in).

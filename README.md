@@ -51,7 +51,9 @@ A league is a private group with its own **league table** covering all your game
 
 - Each player starts with 1000 chips. Blinds are 10/20, and the dealer button switches every hand.
 - Betting is **no-limit**: bet or raise any amount from the minimum up to everything you have. Tap **Raise** (or **Bet**)
-  to open the bet panel: drag the slider, type an amount, or use the quick picks **Min**, **½ Pot**, **Pot** and **All in**.
+  to open the bet panel. It starts at the minimum; each tap on a chip adds it: red **5**, green **25**, black **100**,
+  purple **500**, yellow **1,000**. **Undo** removes the last chip, **Reset** goes back to the minimum, **All in** bets everything,
+  and you can also type an exact amount.
   The smallest bet is the big blind; a raise must be at least as big as the last bet or raise. You can always go all in.
 - Use **Fold**, **Check/Call** and **Bet/Raise** to act, then **Next Hand** to continue.
 - Under your cards, **Win chance** shows your chance of winning the hand after each deal (pre-flop, flop, turn, river). The computer's cards are hidden, so it's worked out against every hand it could hold; ties count as half a win. The log records it too.

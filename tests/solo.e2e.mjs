@@ -39,16 +39,27 @@ try {
   check(/^Raise…$|^Bet…$/.test(await p.textContent('#raise-btn')), 'Raise button opens a chooser');
   await p.click('#raise-btn');
   check(await p.isVisible('#bet-panel'), 'bet panel opens');
-  const labels = await p.$$eval('#bet-panel .bet-presets button', bs => bs.map(b => b.textContent));
-  check(labels[0] === 'Min' && labels[labels.length - 1] === 'All in', `quick amounts: ${labels.join(', ')}`);
-  await p.fill('#bet-panel .bet-input', '5');
-  check(await p.isDisabled('#bet-panel .bet-confirm'), 'below-minimum amount refused');
-  await p.fill('#bet-panel .bet-input', '120');
+  const chips = await p.$$eval('#bet-panel [data-chip]', bs => bs.map(b => +b.dataset.chip));
+  check(chips.join(',') === '5,25,100,500,1000', `chips: ${chips.join(', ')}`);
+  check((await p.textContent('#bet-panel .bet-confirm')) === 'Raise to 40', 'panel starts at the minimum raise (40)');
+  await p.click('#bet-panel [data-chip="25"]');
+  await p.click('#bet-panel [data-chip="25"]');
+  await p.click('#bet-panel [data-chip="100"]');
+  check((await p.textContent('#bet-panel .bet-confirm')) === 'Raise to 190', 'tapping 25 + 25 + 100 chips: Raise to 190');
+  check((await p.$$('#bet-panel .bet-stack .mini')).length === 3, 'the three chips show under the amount');
+  await p.click('#bet-panel .bet-undo');
+  check((await p.textContent('#bet-panel .bet-confirm')) === 'Raise to 90', 'Undo takes the last chip off (90)');
+  check(await p.isDisabled('#bet-panel [data-chip="1000"]'), 'a chip that would go past your stack is greyed out');
   if (SHOT) await p.screenshot({ path: SHOT });
-  check((await p.textContent('#bet-panel .bet-confirm')) === 'Raise to 120', 'custom amount: Raise to 120');
+  await p.fill('#bet-panel .bet-input', '5');
+  check(await p.isDisabled('#bet-panel .bet-confirm'), 'a typed amount below the minimum is refused');
+  await p.click('#bet-panel .bet-reset');
+  await p.click('#bet-panel [data-chip="5"]');
+  await p.click('#bet-panel [data-chip="25"]');
+  check((await p.textContent('#bet-panel .bet-confirm')) === 'Raise to 70', 'Reset then 5 + 25: Raise to 70');
   await p.click('#bet-panel .bet-confirm');
-  await p.waitForFunction(() => /raise to 120/.test(document.querySelector('#log').textContent));
-  check(true, 'raise to 120 made');
+  await p.waitForFunction(() => /raise to 70/.test(document.querySelector('#log').textContent));
+  check(true, 'raise to 70 made');
 
   // Play many hands with random moves, including all-ins
   let hands = 0, allIns = 0, raises = 1;
@@ -65,10 +76,14 @@ try {
     if (r < 0.35 && await p.isEnabled('#raise-btn')) {
       await p.click('#raise-btn');
       if (await p.isVisible('#bet-panel')) {
-        const btns = await p.$$('#bet-panel .bet-presets button');
-        const pick = r < 0.06 ? btns[btns.length - 1] : btns[Math.floor(Math.random() * (btns.length - 1))];
-        if ((await pick.textContent()) === 'All in') allIns++;
-        await pick.click();
+        if (r < 0.05) { await p.click('#bet-panel .bet-allin'); allIns++; }
+        else {
+          // tap up to three random chips that still fit
+          for (let k = Math.floor(Math.random() * 4); k > 0; k--) {
+            const open = await p.$$('#bet-panel [data-chip]:not([disabled])');
+            if (open.length) await open[Math.floor(Math.random() * open.length)].click();
+          }
+        }
         await p.click('#bet-panel .bet-confirm');
         raises++;
       } else allIns++;
