@@ -289,14 +289,12 @@
 
     const yourTurn = !g.handOver && g.toAct === YOU;
     const opt = options(YOU);
-    for (const id of ['fold-btn', 'call-btn', 'raise-btn']) $(id).hidden = g.handOver;
+    for (const id of ['fold-btn', 'call-btn', 'bet-panel']) $(id).hidden = g.handOver;
     $('fold-btn').disabled = !yourTurn || opt.toCall === 0;
     $('call-btn').disabled = !yourTurn;
-    $('raise-btn').disabled = !yourTurn || !opt.canRaise;
     $('call-btn').textContent = opt.toCall === 0 ? 'Check'
       : opt.callAmt === g.chips[YOU] ? `All in ${opt.callAmt}` : `Call ${opt.callAmt}`;
-    $('raise-btn').textContent = opt.min === opt.max && opt.allIn ? `All in ${opt.max}` : opt.isBet ? 'Bet…' : 'Raise…';
-    if (!yourTurn) betPanel.close();
+    betPanel.update(yourTurn && opt.canRaise ? opt : null);
     if (!yourTurn && !g.handOver) $('message').textContent = 'Computer is thinking...';
     else if (yourTurn) $('message').textContent = 'Your move.';
     renderStats();
@@ -308,16 +306,10 @@
   }
 
   // ---------- Wire up buttons ----------
-  $('fold-btn').onclick = () => { betPanel.close(); act(YOU, 'fold'); };
-  $('call-btn').onclick = () => { betPanel.close(); act(YOU, 'call'); };
-  // Raise opens the amount chooser (or goes straight all in when that's the only raise left).
+  $('fold-btn').onclick = () => act(YOU, 'fold');
+  $('call-btn').onclick = () => act(YOU, 'call');
+  // The chip tray under the buttons: tap chips, then the Bet / Raise to button.
   const betPanel = BetPanel.create($('bet-panel'), amount => act(YOU, 'raise', amount));
-  $('raise-btn').onclick = () => {
-    const opt = options(YOU);
-    if (opt.min === opt.max) return act(YOU, opt.allIn ? 'allin' : 'raise', opt.max);
-    if (betPanel.isOpen()) return betPanel.close();
-    betPanel.open(opt);
-  };
   $('next-btn').onclick = startHand;
   $('reset-btn').onclick = () => {
     if (!confirm('Reset your wins, losses and win percentage?')) return;

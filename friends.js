@@ -271,15 +271,15 @@
     const opt = acting ? null : me.options;
     $('fold-btn').disabled = !opt || opt.toCall === 0;
     $('call-btn').disabled = !opt;
-    $('raise-btn').disabled = !opt || !opt.canRaise;
+
     $('call-btn').textContent = !opt || opt.toCall === 0 ? 'Check'
       : opt.callAmount === mine.chips ? `All in ${opt.callAmount}` : `Call ${opt.callAmount}`;
-    $('raise-btn').textContent = !opt ? 'Raise' : opt.min === opt.max ? `All in ${opt.max}` : opt.isBet ? 'Bet…' : 'Raise…';
-    if (!opt) betPanel.close();
+    betPanel.update(opt && opt.canRaise ? opt : null);
     const canRebuy = !tourney && mine.chips === 0 && !(h && !h.over && mine.inHand && !mine.folded);
     $('rebuy-btn').hidden = !canRebuy;
-    for (const id of ['fold-btn', 'call-btn', 'raise-btn']) $(id).hidden = canRebuy;
+    for (const id of ['fold-btn', 'call-btn', 'bet-panel']) $(id).hidden = canRebuy;
     $('controls').hidden = finished || (tourney && (mine.place || mine.watching));
+    $('bet-panel').hidden = $('controls').hidden || canRebuy;
     renderFinal(finished);
 
     // Message
@@ -466,24 +466,17 @@
   async function move(m, amount) {
     if (acting) return;
     acting = true;
-    betPanel.close();
-    for (const id of ['fold-btn', 'call-btn', 'raise-btn']) $(id).disabled = true;
+    betPanel.update(null);
+    for (const id of ['fold-btn', 'call-btn']) $(id).disabled = true;
     try { await send('act', { move: m, amount }); } finally { acting = false; render(); }
   }
-  // Raise opens the amount chooser (or goes straight all in when that's the only raise left).
+  $('fold-btn').onclick = () => move('fold');
+  $('call-btn').onclick = () => move('call');
+  // The chip tray under the buttons: tap chips, then the Bet / Raise to button.
   const betPanel = BetPanel.create($('bet-panel'), amount => {
     const opt = me && me.options;
     move(opt && amount === opt.max ? 'allin' : 'raise', amount);
   });
-  $('fold-btn').onclick = () => move('fold');
-  $('call-btn').onclick = () => move('call');
-  $('raise-btn').onclick = () => {
-    const opt = me && me.options;
-    if (!opt) return;
-    if (opt.min === opt.max) return move('allin');
-    if (betPanel.isOpen()) return betPanel.close();
-    betPanel.open(opt);
-  };
   $('rebuy-btn').onclick = () => send('rebuy');
 
   async function leave() {

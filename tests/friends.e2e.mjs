@@ -82,23 +82,24 @@ async function setup(page, name) {
   await page.click('#setup-btn');
   await page.waitForFunction(() => document.querySelector('#setup-view').hidden);
 }
-// Raise opens the chip panel: tap a few random chips (or sometimes All in) and confirm.
+// Raise with the chip tray: tap a few random chips (or sometimes All in), then the Bet / Raise to button.
 let betsPlaced = 0, allIns = 0;
 async function raise(p, { noAllIn = false } = {}) {
-  if (noAllIn && /^All in/.test(await p.textContent('#raise-btn'))) {
+  if (!(await p.isEnabled('#bet-panel .bet-confirm'))) return;
+  if (noAllIn && /^All in/.test(await p.textContent('#bet-panel .bet-confirm'))) {
     await p.click('#call-btn', { timeout: 1500 }).catch(() => {});
     return;
   }
-  // If the panel is still open from a missed confirm, use it rather than toggling it shut.
-  if (!(await p.isVisible('#bet-panel'))) await p.click('#raise-btn', { timeout: 1500 }).catch(() => {});
-  if (!(await p.isVisible('#bet-panel'))) return; // went straight all in
-  if (!noAllIn && Math.random() < 0.08) { await p.click('#bet-panel .bet-allin').catch(() => {}); allIns++; }
-  else {
+  if (!noAllIn && Math.random() < 0.08 && await p.isEnabled('#bet-panel .bet-allin')) {
+    await p.click('#bet-panel .bet-allin', { timeout: 1000 }).catch(() => {}); allIns++;
+  } else {
     for (let k = Math.floor(Math.random() * 3); k > 0; k--) {
       const open = await p.$$('#bet-panel [data-chip]:not([disabled])');
-      if (open.length) await open[Math.floor(Math.random() * Math.min(open.length, 3))].click().catch(() => {});
+      // short timeout: a refresh from another player's move can disable the chip between finding and tapping it
+      if (open.length) await open[Math.floor(Math.random() * Math.min(open.length, 3))].click({ timeout: 1000 }).catch(() => {});
     }
   }
+  if (noAllIn && /^All in/.test(await p.textContent('#bet-panel .bet-confirm'))) await p.click('#bet-panel .bet-clear', { timeout: 1000 }).catch(() => {});
   await p.click('#bet-panel .bet-confirm', { timeout: 1500 }).then(() => betsPlaced++).catch(() => {});
 }
 const check = (cond, msg) => { if (!cond) throw new Error('Check failed: ' + msg); console.log('ok  ', msg); };
@@ -151,32 +152,39 @@ try {
   await alice.waitForFunction(() => document.querySelector('#equity').textContent.includes('%'), null, { timeout: 5000 });
   check((await alice.textContent('#equity')).includes('vs 2'), 'win chance shown against 2 opponents');
 
-  // Bet panel: custom amount, validation, then the raise reaches everyone
+  // Chip tray: always shown; tap chips then the Raise to button, and the raise reaches everyone
   {
     let actor = null;
     for (let i = 0; i < 40 && !actor; i++) {
-      for (const p of [alice, bob, cara]) if (await p.isEnabled('#raise-btn')) { actor = p; break; }
+      for (const p of [alice, bob, cara]) if (await p.isEnabled('#bet-panel .bet-confirm')) { actor = p; break; }
       if (!actor) await alice.waitForTimeout(300);
     }
-    await actor.click('#raise-btn');
-    check(await actor.isVisible('#bet-panel'), 'Raise opens the chip panel');
+    check(!(await actor.$('#raise-btn')) && await actor.isVisible('#bet-panel .chip-row'), 'only Fold and Call buttons, with the chips always shown');
     const chipValues = await actor.$$eval('#bet-panel [data-chip]', bs => bs.map(b => b.dataset.chip));
     check(chipValues.join(',') === '5,25,100,500,1000', `chips: ${chipValues.join(', ')}`);
-    await actor.fill('#bet-panel .bet-input', '25');
-    check(await actor.isDisabled('#bet-panel .bet-confirm') && /minimum/.test(await actor.textContent('#bet-panel .bet-hint')), 'a raise below the minimum is refused with a hint');
-    await actor.fill('#bet-panel .bet-input', '99999');
-    check(await actor.isDisabled('#bet-panel .bet-confirm'), 'more than your chips is refused');
-    await actor.click('#bet-panel .bet-reset');
-    const minRaise = Number(await actor.inputValue('#bet-panel .bet-input'));
+    const others = [alice, bob, cara].filter(p => p !== actor);
+    check(await others[0].isDisabled('#bet-panel [data-chip="5"]'), "other players' chips are dimmed when it's not their turn");
+    await actor.click('#bet-panel .bet-clear').catch(() => {});
+    const minRaise = Number((await actor.textContent('#bet-panel .bet-confirm')).replace(/\D/g, ''));
     const target = minRaise + 35;
     await actor.click('#bet-panel [data-chip="25"]');
     await actor.click('#bet-panel [data-chip="5"]');
     await actor.click('#bet-panel [data-chip="5"]');
     check(new RegExp(`^(Raise to|Bet) ${target}$`).test(await actor.textContent('#bet-panel .bet-confirm')), `minimum ${minRaise} + chips 25 + 5 + 5 = ${target}`);
     await actor.click('#bet-panel .bet-confirm');
-    await actor.waitForFunction(() => document.querySelector('#bet-panel').hidden);
     await alice.waitForFunction(t => new RegExp(`(raises to|bets) ${t}`).test(document.querySelector('#log').textContent), target, { timeout: 8000 });
     check(true, `the chip raise to ${target} is made and shown to everyone`);
+    // The next player taps Call: it must reach the server (a missing handler once made Call do nothing).
+    let caller = null;
+    for (let i = 0; i < 40 && !caller; i++) {
+      for (const p of [alice, bob, cara]) if (await p.isEnabled('#call-btn')) { caller = p; break; }
+      if (!caller) await alice.waitForTimeout(300);
+    }
+    const before = [...db.values()][0].data.log.length;
+    await caller.click('#call-btn');
+    for (let i = 0; i < 20 && [...db.values()][0].data.log.length === before; i++) await alice.waitForTimeout(200);
+    const lastLine = [...db.values()][0].data.log.slice(-3).join(' | ');
+    check(/calls|checks/.test(lastLine), `tapping Call makes the call (${lastLine})`);
   }
 
   // Play hands (realtime is blocked here, so pages see moves via 2.5s polling): whoever's turn it is picks a random move
@@ -190,7 +198,7 @@ try {
     for (const p of pages) {
       if (await p.isVisible('#call-btn') && await p.isEnabled('#call-btn')) {
         const r = Math.random();
-        const canRaise = await p.isEnabled('#raise-btn');
+        const canRaise = await p.isEnabled('#bet-panel .bet-confirm');
         const canFold = await p.isEnabled('#fold-btn');
         // The button can disable itself if the page updates between the check and the click.
         if (canRaise && r < 0.3) await raise(p);
@@ -288,7 +296,7 @@ try {
       if (await p.isVisible('#call-btn') && await p.isEnabled('#call-btn')) {
         // No all-ins here: under no-limit one all-in can end a heads-up tournament on the first hand,
         // and this part of the test needs a few hands before Dave leaves. All-ins are tested elsewhere.
-        if (Math.random() < 0.25 && await p.isEnabled('#raise-btn')) await raise(p, { noAllIn: true });
+        if (Math.random() < 0.25) await raise(p, { noAllIn: true });
         else await p.click('#call-btn', { timeout: 1500 }).catch(() => {});
         acted = true; break;
       }
