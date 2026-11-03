@@ -82,6 +82,17 @@ async function setup(page, name) {
   await page.click('#setup-btn');
   await page.waitForFunction(() => document.querySelector('#setup-view').hidden);
 }
+// Raise opens the bet panel: pick a random preset (Min / ½ Pot / Pot / All in) and confirm.
+let betsPlaced = 0, allIns = 0;
+async function raise(p) {
+  await p.click('#raise-btn', { timeout: 1500 }).catch(() => {});
+  if (!(await p.isVisible('#bet-panel'))) return; // went straight all in
+  const presets = await p.$$('#bet-panel .bet-presets button');
+  const pick = presets[Math.floor(Math.random() * presets.length)];
+  if ((await pick.textContent()) === 'All in' && Math.random() < 0.7) { await presets[0].click(); } // keep games going
+  else { if ((await pick.textContent()) === 'All in') allIns++; await pick.click(); }
+  await p.click('#bet-panel .bet-confirm', { timeout: 1500 }).then(() => betsPlaced++).catch(() => {});
+}
 const check = (cond, msg) => { if (!cond) throw new Error('Check failed: ' + msg); console.log('ok  ', msg); };
 const totalChips = () => {
   const room = [...db.values()][0].data;
@@ -132,6 +143,29 @@ try {
   await alice.waitForFunction(() => document.querySelector('#equity').textContent.includes('%'), null, { timeout: 5000 });
   check((await alice.textContent('#equity')).includes('vs 2'), 'win chance shown against 2 opponents');
 
+  // Bet panel: custom amount, validation, then the raise reaches everyone
+  {
+    let actor = null;
+    for (let i = 0; i < 40 && !actor; i++) {
+      for (const p of [alice, bob, cara]) if (await p.isEnabled('#raise-btn')) { actor = p; break; }
+      if (!actor) await alice.waitForTimeout(300);
+    }
+    await actor.click('#raise-btn');
+    check(await actor.isVisible('#bet-panel'), 'Raise opens the bet panel with a slider and quick amounts');
+    const presetLabels = await actor.$$eval('#bet-panel .bet-presets button', bs => bs.map(b => b.textContent));
+    check(presetLabels[0] === 'Min' && presetLabels[presetLabels.length - 1] === 'All in', `quick amounts: ${presetLabels.join(', ')}`);
+    await actor.fill('#bet-panel .bet-input', '25');
+    check(await actor.isDisabled('#bet-panel .bet-confirm') && /minimum/.test(await actor.textContent('#bet-panel .bet-hint')), 'a raise below the minimum is refused with a hint');
+    await actor.fill('#bet-panel .bet-input', '99999');
+    check(await actor.isDisabled('#bet-panel .bet-confirm'), 'more than your chips is refused');
+    await actor.fill('#bet-panel .bet-input', '75');
+    check((await actor.textContent('#bet-panel .bet-confirm')) === 'Raise to 75', 'typing a custom amount shows "Raise to 75"');
+    await actor.click('#bet-panel .bet-confirm');
+    await actor.waitForFunction(() => document.querySelector('#bet-panel').hidden);
+    await alice.waitForFunction(() => /raises to 75/.test(document.querySelector('#log').textContent), null, { timeout: 8000 });
+    check(true, 'the custom raise to 75 is made and shown to everyone');
+  }
+
   // Play hands (realtime is blocked here, so pages see moves via 2.5s polling): whoever's turn it is picks a random move
   const pages = [alice, bob, cara];
   const handsPlayed = () => [...db.values()][0].data.handNo;
@@ -146,7 +180,8 @@ try {
         const canRaise = await p.isEnabled('#raise-btn');
         const canFold = await p.isEnabled('#fold-btn');
         // The button can disable itself if the page updates between the check and the click.
-        await p.click(canRaise && r < 0.3 ? '#raise-btn' : canFold && r > 0.85 ? '#fold-btn' : '#call-btn', { timeout: 1500 }).catch(() => {});
+        if (canRaise && r < 0.3) await raise(p);
+        else await p.click(canFold && r > 0.85 ? '#fold-btn' : '#call-btn', { timeout: 1500 }).catch(() => {});
         acted = true;
         if (!shot && handsPlayed() >= 2) { await alice.screenshot({ path: '/tmp/friends-alice.png' }); shot = true; }
         break;
@@ -164,6 +199,7 @@ try {
       check(true, 'Bob reloads the page and is put straight back at the table');
     }
   }
+  console.log(`      (${betsPlaced} bets/raises through the panel, ${allIns} all-ins)`);
   check(handsPlayed() >= 6, `${handsPlayed() - 1} hands played back to back in ${Math.round((Date.now() - started) / 1000)}s (polling only), chips always conserved`);
 
   // Stats: table scores and this-device stats
@@ -237,7 +273,8 @@ try {
     let acted = false;
     for (const p of tPages) {
       if (await p.isVisible('#call-btn') && await p.isEnabled('#call-btn')) {
-        await p.click(Math.random() < 0.5 && await p.isEnabled('#raise-btn') ? '#raise-btn' : '#call-btn', { timeout: 1500 }).catch(() => {});
+        if (Math.random() < 0.5 && await p.isEnabled('#raise-btn')) await raise(p);
+        else await p.click('#call-btn', { timeout: 1500 }).catch(() => {});
         acted = true; break;
       }
     }

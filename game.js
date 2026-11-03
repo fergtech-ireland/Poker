@@ -1,9 +1,8 @@
-// Heads-up Texas Hold'em: You vs Computer. Fixed-limit betting.
+// Heads-up Texas Hold'em: You vs Computer. No-limit betting.
 (function () {
   const START_CHIPS = 1000;
   const SMALL_BLIND = 10;
   const BIG_BLIND = 20;
-  const MAX_RAISES = 4; // bet + 3 raises per street
   const STREETS = ['Pre-flop', 'Flop', 'Turn', 'River'];
   const YOU = 0, CPU = 1;
   const NAMES = ['You', 'Computer'];
@@ -45,7 +44,7 @@
     bets: [0, 0],       // chips put in on the current street
     contrib: [0, 0],    // chips put in this hand
     acted: [false, false],
-    raises: 0,
+    minRaise: 0,        // size of the last full bet/raise this round (the next raise must be at least this)
     street: 0,
     toAct: YOU,
     handOver: true,
@@ -54,7 +53,6 @@
 
   const other = p => 1 - p;
   const pot = () => g.contrib[0] + g.contrib[1];
-  const betSize = () => (g.street < 2 ? BIG_BLIND : BIG_BLIND * 2);
 
   function log(msg) {
     const li = document.createElement('li');
@@ -95,47 +93,56 @@
         `${NAMES[bb]} post${bb === YOU ? '' : 's'} the big blind (${BIG_BLIND}).`);
     log(`Your cards: ${g.hole[YOU].map(Poker.cardLabel).join(' ')}. ${updateEquity()}`);
     g.acted = [false, false];
-    g.raises = 1; // the big blind counts as the first bet
+    g.minRaise = BIG_BLIND;
     g.toAct = sb; // heads-up: small blind acts first pre-flop
     proceed();
   }
 
-  // What can player p do right now?
+  // What can player p do right now? Amounts are "bet/raise to" totals for this round.
   function options(p) {
     const o = other(p);
-    const toCall = Math.max(0, g.bets[o] - g.bets[p]);
+    const top = g.bets[o];
+    const toCall = Math.max(0, top - g.bets[p]);
     const callAmt = Math.min(toCall, g.chips[p]);
-    // Never put in more than the opponent can match.
-    const target = Math.min(
-      g.bets[o] + betSize(),
-      g.bets[p] + g.chips[p],
-      g.bets[o] + g.chips[o]
-    );
-    const canRaise = g.raises < MAX_RAISES && target > g.bets[o];
-    return { toCall, callAmt, canRaise, raiseTo: target };
+    // Heads-up, betting more than the opponent can match is pointless, so the most is their stack.
+    const max = Math.min(g.bets[p] + g.chips[p], g.bets[o] + g.chips[o]);
+    const min = Math.min(max, top === 0 ? BIG_BLIND : top + g.minRaise);
+    return {
+      toCall, callAmt, top, min, max,
+      canRaise: max > top && g.chips[o] > 0,
+      allIn: max === g.bets[p] + g.chips[p],
+      isBet: top === 0, pot: pot(), current: g.bets[p],
+    };
   }
 
-  function act(p, action) {
+  // action: 'fold' | 'call' (check/call) | 'raise' (amount = bet/raise to) | 'allin'
+  function act(p, action, amount) {
     if (g.handOver || g.toAct !== p) return;
     const o = other(p), opt = options(p);
     const who = NAMES[p];
     const s = p === YOU ? '' : 's';
+    if (action === 'allin') { action = opt.canRaise ? 'raise' : 'call'; amount = opt.max; }
+    if (action === 'raise' && !opt.canRaise) action = 'call';
+    if (action === 'raise') {
+      amount = amount == null ? opt.min : Math.floor(amount);
+      if (!(amount <= opt.max && (amount >= opt.min || amount === opt.max))) return; // not a legal amount
+    }
 
     if (action === 'fold') {
       log(`${who} fold${s}.`);
       return endHand(o, `${who === 'You' ? 'You' : 'The computer'} folded.`);
     }
+    const allInNote = () => (g.chips[p] === 0 ? ' (all in)' : '');
     if (action === 'call') {
       if (opt.toCall === 0) log(`${who} check${s}.`);
-      else log(`${who} call${s} ${commit(p, opt.callAmt)}.`);
+      else { const c = commit(p, opt.callAmt); log(`${who} call${s} ${c}${allInNote()}.`); }
       g.acted[p] = true;
-    } else if (action === 'raise' && opt.canRaise) {
-      const wasBet = g.bets[o] === 0 && g.bets[p] === 0;
-      commit(p, opt.raiseTo - g.bets[p]);
-      g.raises++;
+    } else if (action === 'raise') {
+      if (amount - opt.top >= g.minRaise) g.minRaise = amount - opt.top; // a full raise sets the new minimum
+      commit(p, amount - g.bets[p]);
       g.acted = [false, false];
       g.acted[p] = true;
-      log(`${who} ${wasBet ? 'bet' : 'raise'}${s} ${wasBet ? '' : 'to '}${g.bets[p]}.`);
+      log(`${who} ${opt.isBet ? 'bet' : 'raise'}${s} ${opt.isBet ? '' : 'to '}${g.bets[p]}${allInNote()}.`);
     }
 
     if (roundComplete()) nextStreet();
@@ -167,7 +174,7 @@
     if (g.street === 3) return showdown();
     g.bets = [0, 0];
     g.acted = [false, false];
-    g.raises = 0;
+    g.minRaise = BIG_BLIND;
     dealStreet();
     if (g.chips[0] === 0 || g.chips[1] === 0) {
       // Someone is all-in: run out the board.
@@ -226,18 +233,23 @@
     const equity = Poker.estimateEquity(g.hole[CPU], g.board, 500);
     const potOdds = opt.toCall / (pot() + opt.toCall);
     const r = Math.random();
-    let action;
+    // Bet sizes: a fraction of the pot (after calling), rounded to 5s, within the legal range.
+    const size = f => Math.min(opt.max, Math.max(opt.min, Math.round((opt.top + (pot() + opt.toCall) * f) / 5) * 5));
+    const shortStack = g.chips[CPU] <= BIG_BLIND * 10;
 
-    if (opt.canRaise && (equity > 0.75 || (equity > 0.6 && r < 0.5) || r < 0.05)) {
-      action = 'raise';             // strong hand, or the occasional bluff
+    if (opt.canRaise && (equity > 0.85 && (r < 0.35 || shortStack))) {
+      act(CPU, 'allin');                                  // monster hand: shove
+    } else if (opt.canRaise && (equity > 0.72 || (equity > 0.6 && r < 0.45))) {
+      act(CPU, 'raise', size(equity > 0.72 ? 0.75 + r * 0.5 : 0.5));   // value bet
+    } else if (opt.canRaise && r < 0.06) {
+      act(CPU, 'raise', size(0.5));                       // the occasional bluff
     } else if (opt.toCall === 0) {
-      action = 'call';              // check
-    } else if (equity >= potOdds - 0.05 || r < 0.1) {
-      action = 'call';
+      act(CPU, 'call');                                   // check
+    } else if (equity >= potOdds - 0.05 || (r < 0.08 && opt.toCall <= BIG_BLIND * 3)) {
+      act(CPU, 'call');
     } else {
-      action = 'fold';
+      act(CPU, 'fold');
     }
-    act(CPU, action);
   }
 
   // ---------- Rendering ----------
@@ -281,9 +293,10 @@
     $('fold-btn').disabled = !yourTurn || opt.toCall === 0;
     $('call-btn').disabled = !yourTurn;
     $('raise-btn').disabled = !yourTurn || !opt.canRaise;
-    $('call-btn').textContent = opt.toCall === 0 ? 'Check' : `Call ${opt.callAmt}`;
-    $('raise-btn').textContent =
-      (g.bets[CPU] === 0 && g.bets[YOU] === 0 ? 'Bet ' : 'Raise to ') + opt.raiseTo;
+    $('call-btn').textContent = opt.toCall === 0 ? 'Check'
+      : opt.callAmt === g.chips[YOU] ? `All in ${opt.callAmt}` : `Call ${opt.callAmt}`;
+    $('raise-btn').textContent = opt.min === opt.max && opt.allIn ? `All in ${opt.max}` : opt.isBet ? 'Bet…' : 'Raise…';
+    if (!yourTurn) betPanel.close();
     if (!yourTurn && !g.handOver) $('message').textContent = 'Computer is thinking...';
     else if (yourTurn) $('message').textContent = 'Your move.';
     renderStats();
@@ -295,9 +308,16 @@
   }
 
   // ---------- Wire up buttons ----------
-  $('fold-btn').onclick = () => act(YOU, 'fold');
-  $('call-btn').onclick = () => act(YOU, 'call');
-  $('raise-btn').onclick = () => act(YOU, 'raise');
+  $('fold-btn').onclick = () => { betPanel.close(); act(YOU, 'fold'); };
+  $('call-btn').onclick = () => { betPanel.close(); act(YOU, 'call'); };
+  // Raise opens the amount chooser (or goes straight all in when that's the only raise left).
+  const betPanel = BetPanel.create($('bet-panel'), amount => act(YOU, 'raise', amount));
+  $('raise-btn').onclick = () => {
+    const opt = options(YOU);
+    if (opt.min === opt.max) return act(YOU, opt.allIn ? 'allin' : 'raise', opt.max);
+    if (betPanel.isOpen()) return betPanel.close();
+    betPanel.open(opt);
+  };
   $('next-btn').onclick = startHand;
   $('reset-btn').onclick = () => {
     if (!confirm('Reset your wins, losses and win percentage?')) return;

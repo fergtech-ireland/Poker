@@ -50,7 +50,9 @@ A league is a private group with its own **league table** covering all your game
 ## How to play (vs Computer)
 
 - Each player starts with 1000 chips. Blinds are 10/20, and the dealer button switches every hand.
-- Betting is fixed-limit: bets are 20 before the flop and on the flop, and 40 on the turn and river. Each street allows at most 4 bets.
+- Betting is **no-limit**: bet or raise any amount from the minimum up to everything you have. Tap **Raise** (or **Bet**)
+  to open the bet panel: drag the slider, type an amount, or use the quick picks **Min**, **½ Pot**, **Pot** and **All in**.
+  The smallest bet is the big blind; a raise must be at least as big as the last bet or raise. You can always go all in.
 - Use **Fold**, **Check/Call** and **Bet/Raise** to act, then **Next Hand** to continue.
 - Under your cards, **Win chance** shows your chance of winning the hand after each deal (pre-flop, flop, turn, river). The computer's cards are hidden, so it's worked out against every hand it could hold; ties count as half a win. The log records it too.
 - If either player runs out of chips, both stacks reset to 1000.
@@ -100,6 +102,7 @@ Every screen ends with the FergTech footer, the same release line as other FergT
 ## Tests
 
 - `node tests/release.test.mjs`: the version/copyright line and the deploy stamping.
+- `NODE_PATH=$(npm root -g) node tests/solo.e2e.mjs`: the vs-Computer game in a phone browser, including the bet panel and all-ins.
 - `node tests/engine.test.mjs`: game rules, side pots, tournaments, leagues, and thousands of random hands.
 - `NODE_PATH=$(npm root -g) node tests/friends.e2e.mjs`: several players in separate browsers, including a league tournament (needs Playwright).
 
@@ -109,6 +112,7 @@ Every screen ends with the FergTech footer, the same release line as other FergT
 - `CHANGELOG.md`: what changed in each version
 - `poker.js`: deck, hand evaluator and equity estimate
 - `index.html`, `game.js`: the vs-computer game
+- `betting.js`: the bet/raise panel shared by both pages
 - `friends.html`, `friends.js`: play with friends
 - `style.css`: styles shared by both pages
 - `vendor/supabase.js`: Supabase browser library (v2.118.0, MIT), stored here so the app doesn't depend on a CDN

@@ -1,4 +1,4 @@
-// Multiplayer fixed-limit Texas Hold'em rules (2-6 players), cash games and tournaments.
+// Multiplayer no-limit Texas Hold'em rules (2-6 players), cash games and tournaments.
 // Pure game logic: no networking or storage. The room object is plain JSON so it
 // can be saved to the database as-is. Used by the Edge Function and by the tests.
 import './poker.js';
@@ -8,7 +8,6 @@ export const CONFIG = {
   START_CHIPS: 1000,
   SMALL_BLIND: 10,
   BIG_BLIND: 20,
-  MAX_RAISES: 4,          // bet + 3 raises per street
   MAX_PLAYERS: 6,
   TURN_SECONDS: 45,       // after this anyone can ask the server to auto-check/fold
   NEXT_HAND_SECONDS: 4,   // pause after a hand before the next one can be dealt
@@ -98,7 +97,6 @@ function blindsInfo(room) {
 
 const handActive = room => room.hand && !room.hand.over;
 const maxBet = h => Math.max(0, ...h.ids.map(id => h.bets[id]));
-const betSize = h => (h.street < 2 ? h.bb : h.bb * 2);
 const notFolded = h => h.ids.filter(id => !h.folded[id]);
 const canAct = (room, h, id) => !h.folded[id] && player(room, id).chips > 0;
 
@@ -128,20 +126,28 @@ function nextActor(room, h, fromId) {
   return null;
 }
 
+// What the player to act may do. Bet/raise amounts are "to" totals for this round.
+// No-limit: the smallest bet is the big blind; a raise must be at least as big as the last
+// full bet or raise; anyone may go all in for whatever they have.
 export function options(room, id) {
   const h = room.hand;
   if (!handActive(room) || h.toAct !== id) return null;
   const p = player(room, id);
   const top = maxBet(h);
   const toCall = Math.max(0, top - h.bets[id]);
-  const raiseTo = Math.min(top + betSize(h), h.bets[id] + p.chips);
+  const bb = h.bb || CONFIG.BIG_BLIND; // tables saved by older versions have no h.bb
+  const max = h.bets[id] + p.chips;    // all in
+  const min = Math.min(max, top === 0 ? bb : top + (h.minRaise || bb));
   const othersCanAct = h.ids.some(o => o !== id && canAct(room, h, o));
   return {
     toCall,
     callAmount: Math.min(toCall, p.chips),
-    canRaise: h.raises < CONFIG.MAX_RAISES && raiseTo > top && othersCanAct,
-    raiseTo,
+    canRaise: othersCanAct && max > top,
+    min, max, top, allIn: true,
+    raiseTo: min, // kept for older app versions
     isBet: top === 0,
+    current: h.bets[id],
+    pot: h.ids.reduce((s, o) => s + h.contrib[o], 0),
   };
 }
 
@@ -193,7 +199,7 @@ export function startHand(room, rand, now) {
     no: room.handNo, ids, dealerId, sbId, bbId, sb: blinds.sb, bb: blinds.bb,
     deck: P.shuffle(P.newDeck(), rand), hole: {}, board: [],
     bets: {}, contrib: {}, folded: {}, acted: {}, startChips: {},
-    raises: 1, street: 0, toAct: null, turnStart: now, over: false,
+    minRaise: blinds.bb, street: 0, toAct: null, turnStart: now, over: false,
   };
   for (const id of ids) {
     h.bets[id] = 0; h.contrib[id] = 0; h.folded[id] = false; h.acted[id] = false; h.hole[id] = [];
@@ -225,7 +231,7 @@ function endStreet(room, now) {
   const h = room.hand;
   if (h.street === 3) return settle(room, now, false);
   for (const id of h.ids) { h.bets[id] = 0; h.acted[id] = false; }
-  h.raises = 0;
+  h.minRaise = h.bb;
   dealStreet(room, h);
   const actors = h.ids.filter(id => canAct(room, h, id)).length;
   if (actors <= 1) {
@@ -240,15 +246,24 @@ function endStreet(room, now) {
 
 // ---------- Actions ----------
 
-export function act(room, id, move, now) {
+// move: 'fold' | 'call' (check or call) | 'raise' (amount = bet/raise to; default the minimum) | 'allin'
+export function act(room, id, move, now, amount) {
   const h = room.hand;
   if (!handActive(room)) fail('No hand in progress.');
   if (h.toAct !== id) fail("It's not your turn.");
   const opt = options(room, id);
   const who = nameOf(room, id);
 
+  if (move === 'allin') { move = opt.canRaise ? 'raise' : 'call'; amount = opt.max; }
   if (move === 'fold' && opt.toCall === 0) move = 'call'; // never fold when you can check
   if (move === 'raise' && !opt.canRaise) move = 'call';
+  let to = opt.min;
+  if (move === 'raise' && amount !== undefined && amount !== null) {
+    to = Number(amount);
+    if (!Number.isInteger(to)) fail('Please enter a whole number of chips.');
+    if (to > opt.max) fail(`You only have ${opt.max - opt.current} chips; the most you can ${opt.isBet ? 'bet' : 'raise to'} is ${opt.max}.`);
+    if (to < opt.min && to !== opt.max) fail(`The minimum ${opt.isBet ? 'bet' : 'raise'} is ${opt.isBet ? '' : 'to '}${opt.min}.`);
+  }
 
   if (move === 'fold') {
     h.folded[id] = true;
@@ -261,8 +276,8 @@ export function act(room, id, move, now) {
     }
     h.acted[id] = true;
   } else if (move === 'raise') {
-    commit(room, h, id, opt.raiseTo - h.bets[id]);
-    h.raises++;
+    if (to - opt.top >= (h.minRaise || h.bb || CONFIG.BIG_BLIND)) h.minRaise = to - opt.top; // a full raise sets the new minimum
+    commit(room, h, id, to - h.bets[id]);
     for (const o of h.ids) h.acted[o] = false;
     h.acted[id] = true;
     addLog(room, `${who} ${opt.isBet ? 'bets' : 'raises to'} ${h.bets[id]}${player(room, id).chips === 0 ? ' (all in)' : ''}.`);

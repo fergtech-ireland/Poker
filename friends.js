@@ -272,8 +272,10 @@
     $('fold-btn').disabled = !opt || opt.toCall === 0;
     $('call-btn').disabled = !opt;
     $('raise-btn').disabled = !opt || !opt.canRaise;
-    $('call-btn').textContent = opt && opt.toCall > 0 ? `Call ${opt.callAmount}` : 'Check';
-    $('raise-btn').textContent = opt ? `${opt.isBet ? 'Bet' : 'Raise to'} ${opt.raiseTo}` : 'Raise';
+    $('call-btn').textContent = !opt || opt.toCall === 0 ? 'Check'
+      : opt.callAmount === mine.chips ? `All in ${opt.callAmount}` : `Call ${opt.callAmount}`;
+    $('raise-btn').textContent = !opt ? 'Raise' : opt.min === opt.max ? `All in ${opt.max}` : opt.isBet ? 'Bet…' : 'Raise…';
+    if (!opt) betPanel.close();
     const canRebuy = !tourney && mine.chips === 0 && !(h && !h.over && mine.inHand && !mine.folded);
     $('rebuy-btn').hidden = !canRebuy;
     for (const id of ['fold-btn', 'call-btn', 'raise-btn']) $(id).hidden = canRebuy;
@@ -461,15 +463,27 @@
   };
   // Lock the buttons as soon as a move is tapped, so a double-tap can't send it twice.
   let acting = false;
-  async function move(m) {
+  async function move(m, amount) {
     if (acting) return;
     acting = true;
+    betPanel.close();
     for (const id of ['fold-btn', 'call-btn', 'raise-btn']) $(id).disabled = true;
-    try { await send('act', { move: m }); } finally { acting = false; render(); }
+    try { await send('act', { move: m, amount }); } finally { acting = false; render(); }
   }
+  // Raise opens the amount chooser (or goes straight all in when that's the only raise left).
+  const betPanel = BetPanel.create($('bet-panel'), amount => {
+    const opt = me && me.options;
+    move(opt && amount === opt.max ? 'allin' : 'raise', amount);
+  });
   $('fold-btn').onclick = () => move('fold');
   $('call-btn').onclick = () => move('call');
-  $('raise-btn').onclick = () => move('raise');
+  $('raise-btn').onclick = () => {
+    const opt = me && me.options;
+    if (!opt) return;
+    if (opt.min === opt.max) return move('allin');
+    if (betPanel.isOpen()) return betPanel.close();
+    betPanel.open(opt);
+  };
   $('rebuy-btn').onclick = () => send('rebuy');
 
   async function leave() {

@@ -6,6 +6,12 @@ Texas Hold'em by FergTech. The version is shown at the foot of every screen
 To release: bump `version` in `version.js`, add an entry here, and bump `CACHE` in `sw.js`
 so installed copies pick up the update.
 
+## 0.7.0 (3 November 2026)
+- No-limit betting in both modes: bet or raise any amount, or go all in. Tap Raise for the bet panel
+  with a slider, an amount box and quick picks (Min, ½ Pot, Pot, All in).
+- The Call button shows "All in" when calling takes all your chips.
+- The computer opponent sizes its bets and moves all in with strong hands or a short stack.
+
 ## 0.6.1 (31 October 2026)
 - Ready for poker.fergtech.ie and the Android app: domain file, app verification file, maskable icon,
   Android build workflow, Play Store graphics and listing.

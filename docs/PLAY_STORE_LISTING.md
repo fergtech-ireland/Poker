@@ -81,6 +81,7 @@ Simple, fast Texas Hold'em: play the computer, or sit down with friends on your 
 PLAY WITH FRIENDS
 • Create a table and share the link or 4-letter code. 2 to 6 players
 • Cards are dealt by the server, so nobody can see anyone else's hand
+• No-limit betting: bet any amount or go all in
 • Cash games, or tournaments where the blinds rise and the last player standing wins
 • Add friends with your friend code and invite them to your table
 

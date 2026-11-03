@@ -277,7 +277,7 @@ export async function handle(body, store, now = Date.now(), ctx = {}) {
       switch (action) {
         case 'state': changed = false; break;
         case 'start': E.startGame(room, me.id, secureRandom, now); break;
-        case 'act': E.act(room, me.id, String(body.move), now); break;
+        case 'act': E.act(room, me.id, String(body.move), now, body.amount); break;
         case 'next': changed = E.nextHand(room, secureRandom, now); break;
         case 'timeout': changed = E.timeout(room, now); break;
         case 'rebuy': E.rebuy(room, me.id); break;

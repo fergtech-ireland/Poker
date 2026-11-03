@@ -2,7 +2,7 @@
 
 ## Goal
 You and 1–5 friends sit at the same table on your own phones or computers. One person creates a
-room and shares a link or 4-letter code; everyone else joins from that link. Same simple fixed-limit
+room and shares a link or 4-letter code; everyone else joins from that link. Same simple no-limit
 Hold'em as the single-player game, with win/loss stats and per-deal win chance.
 
 ## Why a server is needed
@@ -46,7 +46,7 @@ phone sees the same table. If a phone did this, its owner could peek at everyone
 - Phones also poll every few seconds, so the game still works if the realtime connection drops.
 
 ## Game rules for friends' tables
-- 2–6 players, 1000 starting chips, blinds 10/20, fixed limit (20 / 40 bets, max 4 bets per street).
+- 2–6 players, 1000 starting chips, blinds 10/20, no-limit betting (min bet = big blind, min raise = last raise, all in any time).
 - Correct multi-way pots: side pots when someone is all-in, split pots, odd chips.
 - Join mid-hand → dealt in next hand. Out of chips → **Rebuy** for another 1000.
 - Leave → folded and removed at the end of the hand.

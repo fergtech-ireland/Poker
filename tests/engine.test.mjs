@@ -178,6 +178,52 @@ await test('split pots are shared between tied players', () => {
   assert.equal(r2.players[1].chips + r2.players[2].chips, 2000);
 });
 
+await test('no-limit: minimum bet and raise, custom amounts, bad amounts rejected', () => {
+  const room = makeRoom([1000, 1000, 1000]);
+  E.startHand(room, Math.random, 0);
+  // p0 first to act pre-flop facing the big blind of 20: min raise is to 40, max is all in (1000)
+  let o = E.options(room, 'p0');
+  assert.deepEqual([o.toCall, o.min, o.max, o.isBet], [20, 40, 1000, false]);
+  assert.throws(() => E.act(room, 'p0', 'raise', 1, 30), /minimum raise is to 40/);
+  assert.throws(() => E.act(room, 'p0', 'raise', 1, 1001), /most you can/);
+  assert.throws(() => E.act(room, 'p0', 'raise', 1, 55.5), /whole number/);
+  E.act(room, 'p0', 'raise', 1, 100);         // raise of 80
+  o = E.options(room, 'p1');
+  assert.equal(o.min, 180);                   // next raise must be at least another 80
+  E.act(room, 'p1', 'raise', 1, 250);         // raise of 150
+  assert.equal(E.options(room, 'p2').min, 400);
+  E.act(room, 'p2', 'fold', 1);
+  E.act(room, 'p0', 'call', 1);               // p0 calls 150 more
+  assert.equal(room.hand.street, 1);
+  o = E.options(room, room.hand.toAct);
+  assert.deepEqual([o.isBet, o.min, o.top], [true, 20, 0]); // post-flop the smallest bet is the big blind
+  assert.equal(room.log.filter(l => /raises to 250/.test(l)).length, 1);
+});
+
+await test('no-limit: all in, and calling an all in for less', () => {
+  const room = makeRoom([1000, 300]);
+  E.startHand(room, Math.random, 0);          // p0 dealer/SB acts first heads-up
+  E.act(room, 'p0', 'allin', 1);
+  assert.equal(room.players[0].chips, 0);
+  assert.ok(room.log.some(l => /raises to 1000 \(all in\)/.test(l)));
+  const o = E.options(room, 'p1');
+  assert.equal(o.callAmount, 280);            // p1 can only call with what they have
+  assert.equal(o.canRaise, false);
+  E.act(room, 'p1', 'call', 1);
+  assert.ok(room.hand.over);                  // board runs out, showdown
+  assert.equal(room.players[0].chips + room.players[1].chips, 1300);
+  assert.ok(room.players.some(p => p.chips >= 700)); // p0 always gets back the 700 nobody could call
+});
+
+await test('no-limit: a short all-in raise does not lower the minimum raise', () => {
+  const room = makeRoom([1000, 1000, 130]);
+  E.startHand(room, Math.random, 0);
+  E.act(room, 'p0', 'raise', 1, 100);         // raise of 80
+  E.act(room, 'p1', 'call', 1);
+  E.act(room, 'p2', 'allin', 1);              // BB all in to 130: only 30 more, not a full raise
+  assert.equal(E.options(room, 'p0').min, 210); // still needs a full 80 raise over 130
+});
+
 await test('player leaving on their turn folds them and play continues', () => {
   const room = makeRoom([1000, 1000, 1000]);
   E.startHand(room, Math.random, 0);
@@ -224,7 +270,13 @@ await test('fuzz: thousands of random hands keep chips conserved and turns valid
         assert.equal(total(room), money);
         const r = Math.random();
         if (r < 0.01) { E.leave(room, id, now); money -= 0; continue; }
-        E.act(room, id, r < 0.15 ? 'fold' : r < 0.5 ? 'raise' : 'call', now);
+        const opt = E.options(room, id);
+        if (r < 0.12) E.act(room, id, 'fold', now);
+        else if (r < 0.18) E.act(room, id, 'allin', now);
+        else if (r < 0.5 && opt.canRaise) {
+          // a random legal amount between the minimum and all in
+          E.act(room, id, 'raise', now, opt.min + Math.floor(Math.random() * (opt.max - opt.min + 1)));
+        } else E.act(room, id, 'call', now);
       }
       assert.equal(total(room), money, 'chips not conserved after hand');
       assert.ok(room.players.every(p => p.chips >= 0));
