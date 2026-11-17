@@ -1,9 +1,10 @@
 name: Deploy to GitHub Pages
 
-# The repo is private, and GitHub Pages needs a paid plan for private repos, so the site is hosted on
-# Cloudflare Pages instead (see docs/PLAY_STORE_LISTING.md, step 1). This workflow is kept for running
-# by hand if the repo goes public again or the account moves to GitHub Pro.
+# Publishes the site to GitHub Pages on every push (the repo is public). If the repo is made private,
+# GitHub Pages stops working on the free plan; host on Cloudflare Pages instead (docs/PLAY_STORE_LISTING.md).
 on:
+  push:
+    branches: [claude/texas-holdem-poker-game-hwf4kq]
   workflow_dispatch:
 
 permissions:
